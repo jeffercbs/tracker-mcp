@@ -1,0 +1,29 @@
+{
+  "name": "my-tracker-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets an AI model access issues, projects and notes in my-tracker on behalf of an authenticated user",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "my-tracker-mcp": "dist/src/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "dev": "tsx src/index.ts",
+    "login": "tsx scripts/login.ts",
+    "logout": "tsx scripts/logout.ts",
+    "whoami": "tsx scripts/whoami.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
