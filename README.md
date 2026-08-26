@@ -51,9 +51,43 @@ en el formulario de login normal del sitio, dentro del navegador.
 - Soporte de `?next=` en `/login` para volver a `/mcp/authorize` después de
   loguearse si no había sesión.
 
-## Instalación
+## Instalación para el equipo (sin clonar el repo)
+
+El repo es privado en GitHub (`jeffercbs/my-tracker-mcp`), así que hace falta
+tener acceso a él con tu cuenta de GitHub (`gh auth login` o SSH configurado)
+— `npx` clona por vos usando esas credenciales, ya autenticado.
+
+Registrá el servidor directo en Claude Code (o el cliente MCP que uses),
+apuntando a `npx github:jeffercbs/my-tracker-mcp` en vez de una ruta local:
 
 ```bash
+claude mcp add my-tracker -s user \
+  -e NEXT_PUBLIC_SUPABASE_URL=<la misma NEXT_PUBLIC_SUPABASE_URL de my-tracker> \
+  -e NEXT_PUBLIC_SUPABASE_ANON_KEY=<la misma NEXT_PUBLIC_SUPABASE_ANON_KEY de my-tracker> \
+  -e MY_TRACKER_WEB_URL=https://my-tracker-jeffercbsdev.vercel.app \
+  -- npx -y github:jeffercbs/my-tracker-mcp
+```
+
+La primera vez que Claude lo invoque (o corriendo el comando de arriba a
+mano), `npx` clona el repo, instala dependencias y compila solo (hay un
+script `prepare` para eso) — no hace falta `git clone` ni `npm run build`
+manual. Las corridas siguientes usan la copia cacheada por `npx`.
+
+Para autenticarte (una vez, o para cambiar de usuario), sin clonar nada:
+
+```bash
+npx -y --package=github:jeffercbs/my-tracker-mcp my-tracker-mcp-login
+npx -y --package=github:jeffercbs/my-tracker-mcp my-tracker-mcp-whoami   # opcional, confirma el usuario
+npx -y --package=github:jeffercbs/my-tracker-mcp my-tracker-mcp-logout  # para cerrar sesión
+```
+
+(También podés pedirle a Claude que corra la tool `login` directamente desde
+el chat — ver "Tools expuestas" más abajo.)
+
+## Instalación en desarrollo (clonando el repo)
+
+```bash
+git clone https://github.com/jeffercbs/my-tracker-mcp.git
 cd my-tracker-mcp
 npm install
 cp .env.example .env
@@ -64,7 +98,7 @@ Completá `.env`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=...       # igual que en my-tracker/.env.local
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...  # igual que en my-tracker/.env.local (es pública, no secreta)
-MY_TRACKER_WEB_URL=http://localhost:3000  # o la URL donde corra my-tracker
+MY_TRACKER_WEB_URL=https://my-tracker-jeffercbsdev.vercel.app  # o http://localhost:3000 en dev
 ```
 
 ```bash
@@ -72,8 +106,6 @@ npm run login     # abre el navegador, autoriza, guarda la sesión localmente
 npm run whoami     # opcional: confirma con qué usuario quedaste autenticado
 npm run build
 ```
-
-## Conectarlo a un cliente MCP
 
 ```json
 {
