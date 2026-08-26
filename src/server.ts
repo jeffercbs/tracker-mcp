@@ -1,0 +1,9 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+
+import { registerAllTools } from "./tools/index.js"
+
+export function createTrackerMcpServer(): McpServer {
+  const server = new McpServer({ name: "my-tracker-mcp", version: "0.1.0" })
+  registerAllTools(server)
+  return server
+}
