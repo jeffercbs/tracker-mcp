@@ -39,6 +39,8 @@ export interface ActivityEntryDTO {
 export interface IssueDetailDTO extends IssueListItemDTO {
   description: string
   stepsToReproduce: string
+  businessLogic: string
+  resolutionNotes: string
   comments: CommentDTO[]
   activity: ActivityEntryDTO[]
   attachments: AttachmentDTO[]
@@ -52,7 +54,7 @@ const LIST_SELECT = `
 `
 
 const DETAIL_SELECT = `
-  id, project_id, number, title, description, steps_to_reproduce, priority, due_date, created_at, updated_at, assignee_id, reporter_id, sprint_id,
+  id, project_id, number, title, description, steps_to_reproduce, business_logic, resolution_notes, priority, due_date, created_at, updated_at, assignee_id, reporter_id, sprint_id,
   status:issue_statuses(id, name, category, color),
   type:issue_types(id, name, color),
   issue_labels(labels(id, name, color)),
@@ -107,6 +109,8 @@ async function mapIssueDetail(
     ...mapIssueRow(row),
     description: row.description ?? "",
     stepsToReproduce: row.steps_to_reproduce ?? "",
+    businessLogic: row.business_logic ?? "",
+    resolutionNotes: row.resolution_notes ?? "",
     comments: (row.comments ?? []).map(mapComment),
     activity: (row.activity_log ?? []).map(mapActivity),
     attachments: await listAttachmentsForIssue(client, row.id),
@@ -201,6 +205,8 @@ export async function createIssue(
     title: string
     description?: string
     stepsToReproduce?: string
+    businessLogic?: string
+    resolutionNotes?: string
     statusId?: string
     typeId?: string
     priority?: string
@@ -238,6 +244,8 @@ export async function createIssue(
       title: input.title,
       description: input.description ?? "",
       steps_to_reproduce: input.stepsToReproduce,
+      business_logic: input.businessLogic,
+      resolution_notes: input.resolutionNotes,
       status_id: statusId,
       type_id: input.typeId,
       priority: input.priority ?? "none",
@@ -300,6 +308,8 @@ export async function updateIssue(
     title?: string
     description?: string
     stepsToReproduce?: string
+    businessLogic?: string
+    resolutionNotes?: string
     statusId?: string
     typeId?: string | null
     priority?: string
@@ -311,6 +321,8 @@ export async function updateIssue(
   if (patch.title !== undefined) update.title = patch.title
   if (patch.description !== undefined) update.description = patch.description
   if (patch.stepsToReproduce !== undefined) update.steps_to_reproduce = patch.stepsToReproduce
+  if (patch.businessLogic !== undefined) update.business_logic = patch.businessLogic
+  if (patch.resolutionNotes !== undefined) update.resolution_notes = patch.resolutionNotes
   if (patch.statusId !== undefined) update.status_id = patch.statusId
   if (patch.typeId !== undefined) update.type_id = patch.typeId
   if (patch.priority !== undefined) update.priority = patch.priority
