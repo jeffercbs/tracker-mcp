@@ -7,6 +7,7 @@ import { resolveProject } from "./resolve-project.js"
 import {
   resolveAssigneeId,
   resolveLabelIds,
+  resolveStatus,
   resolveStatusId,
   resolveTypeId,
 } from "./resolve-refs.js"
@@ -23,7 +24,7 @@ const typeRef = z
 const statusRef = z
   .string()
   .describe(
-    "Estado por nombre ('En progreso'), por categoría ('todo', 'in_progress', 'done', ...) o por id"
+    "Estado por nombre ('En progreso'), por categoría ('todo', 'in_progress', 'done', ...) o por id. No pases un estado de categoría 'done' mientras falte documentación o evidencia: la incidencia no está terminada"
   )
 
 const assigneeRef = z
@@ -33,6 +34,55 @@ const assigneeRef = z
 const labelsRef = z
   .array(z.string())
   .describe("Etiquetas por nombre o id. Se reemplaza el conjunto completo de etiquetas")
+
+const descriptionField = z
+  .string()
+  .describe(
+    "Markdown. QUÉ pasa y POR QUÉ es un problema, en lenguaje de producto. PROHIBIDO: rutas de archivos, nombres de funciones o clases, fragmentos de código, ramas o commits. Todo eso va en resolutionNotes"
+  )
+
+const stepsField = z
+  .string()
+  .describe(
+    "Markdown. Pasos numerados que cualquiera pueda seguir en la aplicación para llegar al fallo, sin referencias a código"
+  )
+
+const businessLogicField = z
+  .string()
+  .describe(
+    "Markdown. La lógica de la incidencia: reglas de negocio, condiciones, casos borde y qué debería ocurrir en cada uno. Es la referencia para decidir si el comportamiento actual es correcto"
+  )
+
+const resolutionField = z
+  .string()
+  .describe(
+    "Markdown. La solución aplicada: causa raíz, qué se cambió, en qué archivos y cómo se verificó. Es el ÚNICO campo donde van las referencias a código. Rellénalo antes de cerrar la incidencia"
+  )
+
+function missingDocumentation(
+  issue: issues.IssueDetailDTO,
+  patch: {
+    description?: string
+    businessLogic?: string
+    resolutionNotes?: string
+  }
+): string[] {
+  const resolved = {
+    description: patch.description ?? issue.description,
+    businessLogic: patch.businessLogic ?? issue.businessLogic,
+    resolutionNotes: patch.resolutionNotes ?? issue.resolutionNotes,
+  }
+
+  const missing: string[] = []
+  if (resolved.description.trim().length === 0) missing.push("`description` (el problema)")
+  if (resolved.businessLogic.trim().length === 0) {
+    missing.push("`businessLogic` (las reglas y el comportamiento esperado)")
+  }
+  if (resolved.resolutionNotes.trim().length === 0) {
+    missing.push("`resolutionNotes` (la solución aplicada)")
+  }
+  return missing
+}
 
 export function registerIssueTools(server: McpServer) {
   server.registerTool(
@@ -82,7 +132,7 @@ export function registerIssueTools(server: McpServer) {
     {
       title: "Obtener incidencia",
       description:
-        "Obtiene el detalle completo de una incidencia por su número: descripción, pasos para reproducir, estado, tipo, etiquetas, comentarios, historial de actividad y adjuntos (con URL firmada temporal para descargarlos).",
+        "Obtiene el detalle completo de una incidencia por su número: descripción, pasos para reproducir, lógica documentada, solución aplicada, estado, tipo, etiquetas, comentarios, historial de actividad y adjuntos (con URL firmada temporal para descargarlos).",
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
@@ -109,16 +159,15 @@ export function registerIssueTools(server: McpServer) {
     {
       title: "Crear incidencia",
       description:
-        "Crea una incidencia con toda su información: título, descripción, pasos para reproducir, tipo, estado, prioridad, persona asignada, etiquetas y fecha límite. Los campos `type`, `status`, `assignee` y `labels` aceptan nombres además de ids. Para adjuntar capturas de evidencia usa después add_issue_attachment.",
+        "Crea una incidencia con toda su información: título, descripción, pasos para reproducir, lógica de negocio, solución aplicada, tipo, estado, prioridad, persona asignada, etiquetas y fecha límite. Los campos `type`, `status`, `assignee` y `labels` aceptan nombres además de ids. Para adjuntar capturas de evidencia usa después add_issue_attachment.",
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
         title: z.string().min(1),
-        description: z.string().optional().describe("Qué ocurre y por qué es un problema"),
-        stepsToReproduce: z
-          .string()
-          .optional()
-          .describe("Pasos numerados para reproducir el problema, uno por línea"),
+        description: descriptionField.optional(),
+        stepsToReproduce: stepsField.optional(),
+        businessLogic: businessLogicField.optional(),
+        resolutionNotes: resolutionField.optional(),
         type: typeRef.optional(),
         status: statusRef.optional().describe("Si se omite, se usa el primer estado del flujo"),
         priority: priority.optional(),
@@ -154,6 +203,8 @@ export function registerIssueTools(server: McpServer) {
           title: input.title,
           description: input.description,
           stepsToReproduce: input.stepsToReproduce,
+          businessLogic: input.businessLogic,
+          resolutionNotes: input.resolutionNotes,
           statusId,
           typeId,
           priority: input.priority,
@@ -174,14 +225,16 @@ export function registerIssueTools(server: McpServer) {
     {
       title: "Actualizar incidencia",
       description:
-        "Actualiza cualquier campo de una incidencia existente: título, descripción, pasos para reproducir, tipo, estado, prioridad, persona asignada, etiquetas y fecha límite. Solo se modifican los campos que envíes. Los cambios de estado, prioridad y asignación quedan registrados en el historial de actividad.",
+        "Actualiza cualquier campo de una incidencia existente: título, descripción, pasos para reproducir, lógica de negocio, solución aplicada, tipo, estado, prioridad, persona asignada, etiquetas y fecha límite. Usa `resolutionNotes` para documentar el arreglo cuando cierres una incidencia. Solo se modifican los campos que envíes. Los cambios de estado, prioridad y asignación quedan registrados en el historial de actividad.",
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
         issueNumber: z.number().int().positive(),
         title: z.string().optional(),
-        description: z.string().optional(),
-        stepsToReproduce: z.string().optional(),
+        description: descriptionField.optional(),
+        stepsToReproduce: stepsField.optional(),
+        businessLogic: businessLogicField.optional(),
+        resolutionNotes: resolutionField.optional(),
         type: typeRef.optional(),
         status: statusRef.optional(),
         priority: priority.optional(),
@@ -189,6 +242,12 @@ export function registerIssueTools(server: McpServer) {
         labels: labelsRef.optional().describe("Reemplaza todas las etiquetas. [] las quita todas"),
         createMissingLabels: z.boolean().optional(),
         dueDate: z.string().nullable().optional().describe("Fecha ISO o null para quitarla"),
+        forceClose: z
+          .boolean()
+          .optional()
+          .describe(
+            "Cierra la incidencia aunque falte documentación. Úsalo solo si la persona usuaria lo pide explícitamente, y dile qué queda sin documentar"
+          ),
       },
     },
     async (input) => {
@@ -206,9 +265,24 @@ export function registerIssueTools(server: McpServer) {
           )
         }
 
-        const statusId = input.status
-          ? await resolveStatusId(client, project.id, input.status)
+        const status = input.status
+          ? await resolveStatus(client, project.id, input.status)
           : undefined
+        const statusId = status?.id
+
+        if (status?.category === "done" && !input.forceClose) {
+          const missing = missingDocumentation(issue, input)
+          if (missing.length > 0) {
+            return fail(
+              new Error(
+                `No se cerró la incidencia #${issue.number}: una incidencia no se finaliza hasta que está documentada. Falta ${missing.join(", ")}. ` +
+                  "Complétalo con update_issue (y add_issue_attachment para la evidencia) y vuelve a mover el estado. " +
+                  "Si la persona usuaria pide cerrarla igual, repite la llamada con forceClose:true."
+              )
+            )
+          }
+        }
+
         const typeId = input.type ? await resolveTypeId(client, project.id, input.type) : undefined
         const assigneeId =
           input.assignee === undefined
@@ -221,6 +295,8 @@ export function registerIssueTools(server: McpServer) {
           title: input.title,
           description: input.description,
           stepsToReproduce: input.stepsToReproduce,
+          businessLogic: input.businessLogic,
+          resolutionNotes: input.resolutionNotes,
           statusId,
           typeId,
           priority: input.priority,

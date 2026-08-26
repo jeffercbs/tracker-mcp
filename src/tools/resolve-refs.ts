@@ -43,23 +43,31 @@ function pick<T extends { id: string; name: string }>(
   )
 }
 
-export async function resolveStatusId(
+export async function resolveStatus(
   client: SupabaseClient,
   projectId: string,
   value: string
-): Promise<string> {
+): Promise<projects.IssueStatusOption> {
   const statuses = await projects.listIssueStatuses(client, projectId)
   if (isUuid(value)) {
-    return pick(statuses, value, "un estado").id
+    return pick(statuses, value, "un estado")
   }
 
   const target = normalize(value)
   const byCategory = statuses.filter((status) => normalize(status.category) === target)
   if (byCategory.length === 1) {
-    return byCategory[0].id
+    return byCategory[0]
   }
 
-  return pick(statuses, value, "un estado").id
+  return pick(statuses, value, "un estado")
+}
+
+export async function resolveStatusId(
+  client: SupabaseClient,
+  projectId: string,
+  value: string
+): Promise<string> {
+  return (await resolveStatus(client, projectId, value)).id
 }
 
 export async function resolveTypeId(

@@ -69,14 +69,22 @@ export function registerNoteTools(server: McpServer) {
     {
       title: "Crear nota",
       description:
-        "Crea una nota en un proyecto, opcionalmente asociada a una incidencia. Con visibility='private' solo la ve el autor; con 'shared' la ve todo el workspace.",
+        "Crea una nota en un proyecto, opcionalmente asociada a una incidencia. Es el sitio para todo el material de una incidencia que no cabe en sus cuatro campos fijos (description, stepsToReproduce, businessLogic, resolutionNotes): decisiones técnicas descartadas y por qué, consultas SQL de diagnóstico, análisis de impacto, pendientes derivados, notas de despliegue o contexto de una investigación. Pasa siempre `issueNumber` cuando la nota pertenezca a una incidencia, para que no quede suelta en el proyecto. Una nota por tema.",
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
-        issueNumber: z.number().int().positive().optional(),
-        title: z.string().min(1),
-        content: z.string().optional(),
-        visibility: z.enum(["private", "shared"]).optional(),
+        issueNumber: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Incidencia a la que pertenece la nota. Pásalo siempre que exista una"),
+        title: z.string().min(1).describe("Título que se entienda leyéndolo en una lista"),
+        content: z.string().optional().describe("Contenido en Markdown"),
+        visibility: z
+          .enum(["private", "shared"])
+          .optional()
+          .describe("'shared' (recomendado) la ve el workspace; 'private' solo el autor"),
       },
     },
     async (input) => {
