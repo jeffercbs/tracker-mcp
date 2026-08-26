@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { dbErrorMessage } from "./errors.js"
+import { listAttachmentsForIssue, type AttachmentDTO } from "./attachments.js"
 
 export interface IssueListItemDTO {
   id: string
@@ -26,10 +27,21 @@ export interface CommentDTO {
   createdAt: string
 }
 
+export interface ActivityEntryDTO {
+  id: string
+  actorId: string | null
+  action: string
+  fromValue: string | null
+  toValue: string | null
+  createdAt: string
+}
+
 export interface IssueDetailDTO extends IssueListItemDTO {
   description: string
   stepsToReproduce: string
   comments: CommentDTO[]
+  activity: ActivityEntryDTO[]
+  attachments: AttachmentDTO[]
 }
 
 const LIST_SELECT = `
@@ -44,7 +56,8 @@ const DETAIL_SELECT = `
   status:issue_statuses(id, name, category, color),
   type:issue_types(id, name, color),
   issue_labels(labels(id, name, color)),
-  comments(id, author_id, body, created_at)
+  comments(id, author_id, body, created_at),
+  activity_log(id, actor_id, action, from_value, to_value, created_at)
 `
 
 function mapIssueRow(row: any): IssueListItemDTO {
@@ -72,6 +85,31 @@ function mapComment(row: any): CommentDTO {
     authorId: row.author_id,
     body: row.body,
     createdAt: row.created_at,
+  }
+}
+
+function mapActivity(row: any): ActivityEntryDTO {
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    action: row.action,
+    fromValue: row.from_value,
+    toValue: row.to_value,
+    createdAt: row.created_at,
+  }
+}
+
+async function mapIssueDetail(
+  client: SupabaseClient,
+  row: any
+): Promise<IssueDetailDTO> {
+  return {
+    ...mapIssueRow(row),
+    description: row.description ?? "",
+    stepsToReproduce: row.steps_to_reproduce ?? "",
+    comments: (row.comments ?? []).map(mapComment),
+    activity: (row.activity_log ?? []).map(mapActivity),
+    attachments: await listAttachmentsForIssue(client, row.id),
   }
 }
 
@@ -146,19 +184,14 @@ export async function getIssueByNumber(
     .eq("project_id", projectId)
     .eq("number", number)
     .order("created_at", { referencedTable: "comments", ascending: true })
+    .order("created_at", { referencedTable: "activity_log", ascending: true })
     .maybeSingle()
 
   if (error || !data) {
     return null
   }
 
-  const row = data as any
-  return {
-    ...mapIssueRow(row),
-    description: row.description ?? "",
-    stepsToReproduce: row.steps_to_reproduce ?? "",
-    comments: (row.comments ?? []).map(mapComment),
-  }
+  return mapIssueDetail(client, data)
 }
 
 export async function createIssue(
@@ -173,6 +206,7 @@ export async function createIssue(
     priority?: string
     assigneeId?: string
     dueDate?: string
+    labelIds?: string[]
     reporterId: string
   }
 ): Promise<IssueDetailDTO> {
@@ -219,22 +253,55 @@ export async function createIssue(
   }
 
   const row = data as any
-  return {
-    ...mapIssueRow(row),
-    description: row.description ?? "",
-    stepsToReproduce: row.steps_to_reproduce ?? "",
-    comments: (row.comments ?? []).map(mapComment),
+
+  if (input.labelIds && input.labelIds.length > 0) {
+    await setIssueLabels(client, row.id, input.labelIds)
+    const refreshed = await getIssueByNumber(client, input.projectId, row.number)
+    if (refreshed) {
+      return refreshed
+    }
+  }
+
+  return mapIssueDetail(client, row)
+}
+
+export async function setIssueLabels(
+  client: SupabaseClient,
+  issueId: string,
+  labelIds: string[]
+) {
+  const { error: deleteError } = await client
+    .from("issue_labels")
+    .delete()
+    .eq("issue_id", issueId)
+
+  if (deleteError) {
+    throw new Error(dbErrorMessage("No se pudieron limpiar las etiquetas", deleteError))
+  }
+
+  if (labelIds.length === 0) {
+    return
+  }
+
+  const { error } = await client
+    .from("issue_labels")
+    .insert(labelIds.map((labelId) => ({ issue_id: issueId, label_id: labelId })))
+
+  if (error) {
+    throw new Error(dbErrorMessage("No se pudieron asignar las etiquetas", error))
   }
 }
 
 export async function updateIssue(
   client: SupabaseClient,
   issueId: string,
+  actorId: string,
   patch: {
     title?: string
     description?: string
+    stepsToReproduce?: string
     statusId?: string
-    typeId?: string
+    typeId?: string | null
     priority?: string
     assigneeId?: string | null
     dueDate?: string | null
@@ -243,16 +310,73 @@ export async function updateIssue(
   const update: Record<string, unknown> = {}
   if (patch.title !== undefined) update.title = patch.title
   if (patch.description !== undefined) update.description = patch.description
+  if (patch.stepsToReproduce !== undefined) update.steps_to_reproduce = patch.stepsToReproduce
   if (patch.statusId !== undefined) update.status_id = patch.statusId
   if (patch.typeId !== undefined) update.type_id = patch.typeId
   if (patch.priority !== undefined) update.priority = patch.priority
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate
 
+  if (Object.keys(update).length === 0) {
+    return
+  }
+
+  const { data: before } = await client
+    .from("issues")
+    .select("status_id, priority, assignee_id")
+    .eq("id", issueId)
+    .maybeSingle()
+
   const { error } = await client.from("issues").update(update).eq("id", issueId)
 
   if (error) {
     throw new Error(dbErrorMessage("No se pudo actualizar la incidencia", error))
+  }
+
+  if (!before) {
+    return
+  }
+
+  const activityRows: Array<{
+    issue_id: string
+    actor_id: string
+    action: string
+    from_value: string | null
+    to_value: string | null
+  }> = []
+
+  if (patch.statusId !== undefined && patch.statusId !== before.status_id) {
+    activityRows.push({
+      issue_id: issueId,
+      actor_id: actorId,
+      action: "status_changed",
+      from_value: before.status_id,
+      to_value: patch.statusId,
+    })
+  }
+
+  if (patch.priority !== undefined && patch.priority !== before.priority) {
+    activityRows.push({
+      issue_id: issueId,
+      actor_id: actorId,
+      action: "priority_changed",
+      from_value: before.priority,
+      to_value: patch.priority,
+    })
+  }
+
+  if (patch.assigneeId !== undefined && patch.assigneeId !== before.assignee_id) {
+    activityRows.push({
+      issue_id: issueId,
+      actor_id: actorId,
+      action: "assignee_changed",
+      from_value: before.assignee_id,
+      to_value: patch.assigneeId,
+    })
+  }
+
+  if (activityRows.length > 0) {
+    await client.from("activity_log").insert(activityRows)
   }
 }
 

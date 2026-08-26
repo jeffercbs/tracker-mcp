@@ -84,6 +84,7 @@ export interface IssueStatusOption {
   name: string
   category: string
   position: number
+  color: string
 }
 
 export async function listIssueStatuses(
@@ -92,7 +93,7 @@ export async function listIssueStatuses(
 ): Promise<IssueStatusOption[]> {
   const { data, error } = await client
     .from("issue_statuses")
-    .select("id, name, category, position")
+    .select("id, name, category, position, color")
     .eq("project_id", projectId)
     .order("position", { ascending: true })
 
@@ -106,6 +107,7 @@ export interface IssueTypeOption {
   id: string
   name: string
   color: string
+  icon: string | null
 }
 
 export async function listIssueTypes(
@@ -114,13 +116,59 @@ export async function listIssueTypes(
 ): Promise<IssueTypeOption[]> {
   const { data, error } = await client
     .from("issue_types")
-    .select("id, name, color")
+    .select("id, name, color, icon")
     .eq("project_id", projectId)
+    .order("name", { ascending: true })
 
   if (error) {
     throw new Error(dbErrorMessage("No se pudieron cargar los tipos", error))
   }
   return data ?? []
+}
+
+export interface WorkspaceMemberOption {
+  userId: string
+  role: string
+  fullName: string | null
+  email: string
+}
+
+export async function listWorkspaceMembers(
+  client: SupabaseClient,
+  workspaceId: string
+): Promise<WorkspaceMemberOption[]> {
+  const { data, error } = await client
+    .from("workspace_members")
+    .select("role, user_id, profiles(full_name, email)")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active")
+
+  if (error) {
+    throw new Error(dbErrorMessage("No se pudieron cargar los miembros", error))
+  }
+
+  return (data ?? []).map((row: any) => ({
+    userId: row.user_id,
+    role: row.role,
+    fullName: row.profiles?.full_name ?? null,
+    email: row.profiles?.email ?? "",
+  }))
+}
+
+export async function createLabel(
+  client: SupabaseClient,
+  input: { projectId: string; name: string; color?: string }
+): Promise<LabelOption> {
+  const { data, error } = await client
+    .from("labels")
+    .insert({ project_id: input.projectId, name: input.name, color: input.color ?? "#6366f1" })
+    .select("id, name, color")
+    .single()
+
+  if (error) {
+    throw new Error(dbErrorMessage("No se pudo crear la etiqueta", error))
+  }
+  return data
 }
 
 export interface LabelOption {
