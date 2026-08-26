@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { performBrowserLogin } from "../src/auth/auth-flow.js"
 
 async function main() {

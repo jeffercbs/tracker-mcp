@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createAnonClient } from "../src/auth/supabase-client.js"
 import { clearSession, loadSession } from "../src/auth/session-store.js"
 

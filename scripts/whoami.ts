@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { getUserClient } from "../src/auth/supabase-client.js"
 
 async function main() {

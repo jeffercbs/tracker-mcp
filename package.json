@@ -5,10 +5,14 @@
   "type": "module",
   "private": true,
   "bin": {
-    "my-tracker-mcp": "dist/src/index.js"
+    "my-tracker-mcp": "dist/src/index.js",
+    "my-tracker-mcp-login": "dist/scripts/login.js",
+    "my-tracker-mcp-logout": "dist/scripts/logout.js",
+    "my-tracker-mcp-whoami": "dist/scripts/whoami.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "start": "node dist/src/index.js",
     "dev": "tsx src/index.ts",
     "login": "tsx scripts/login.ts",
