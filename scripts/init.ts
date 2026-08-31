@@ -3,14 +3,7 @@ import "dotenv/config"
 
 import { relative, resolve } from "node:path"
 
-import {
-  ENV_KEYS,
-  loadLocalConfig,
-  localConfigPath,
-  saveLocalConfig,
-  applyToEnv,
-  type LocalConfig,
-} from "../src/config/local-config.js"
+import { resolveWebUrl } from "../src/config/resolve.js"
 import { registerMcpServer, type RegistrationScope } from "../src/setup/register-mcp.js"
 
 function usage(): string {
@@ -22,9 +15,6 @@ function usage(): string {
     "",
     "  --scope project|user   Dónde registrar el servidor MCP (por defecto: project, un .mcp.json en el repo)",
     "  --dir <ruta>           Raíz del repositorio (por defecto, el directorio actual)",
-    "  --supabase-url <url>   NEXT_PUBLIC_SUPABASE_URL (solo la primera vez)",
-    "  --anon-key <clave>     NEXT_PUBLIC_SUPABASE_ANON_KEY (solo la primera vez)",
-    "  --web-url <url>        MY_TRACKER_WEB_URL (solo la primera vez)",
     "  --force                Reemplaza el skill si ya existe",
     "  --skip-login           No abre el navegador aunque no haya sesión",
   ].join("\n")
@@ -37,43 +27,33 @@ interface Options {
   scope: RegistrationScope
   force: boolean
   skipLogin: boolean
-  supabaseUrl?: string
-  anonKey?: string
-  webUrl?: string
 }
 
 function parseArgs(argv: string[]): Options {
   const positional: string[] = []
-  const options: Partial<Options> = { dir: process.cwd(), scope: "project", force: false, skipLogin: false }
-
-  const take = (argv: string[], index: number, flag: string) => {
-    const value = argv[index]
-    if (!value) {
-      throw new Error(`${flag} necesita un valor`)
-    }
-    return value
-  }
+  let dir = process.cwd()
+  let scope: RegistrationScope = "project"
+  let force = false
+  let skipLogin = false
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === "--force") {
-      options.force = true
+      force = true
     } else if (arg === "--skip-login") {
-      options.skipLogin = true
+      skipLogin = true
     } else if (arg === "--dir") {
-      options.dir = take(argv, ++index, "--dir")
+      const value = argv[++index]
+      if (!value) {
+        throw new Error("--dir necesita una ruta")
+      }
+      dir = value
     } else if (arg === "--scope") {
-      const value = take(argv, ++index, "--scope")
+      const value = argv[++index]
       if (value !== "project" && value !== "user") {
         throw new Error("--scope solo acepta 'project' o 'user'")
       }
-      options.scope = value
-    } else if (arg === "--supabase-url") {
-      options.supabaseUrl = take(argv, ++index, "--supabase-url")
-    } else if (arg === "--anon-key") {
-      options.anonKey = take(argv, ++index, "--anon-key")
-    } else if (arg === "--web-url") {
-      options.webUrl = take(argv, ++index, "--web-url")
+      scope = value
     } else if (arg === "--help" || arg === "-h") {
       console.log(usage())
       process.exit(0)
@@ -87,50 +67,13 @@ function parseArgs(argv: string[]): Options {
   }
 
   return {
-    ...(options as Options),
     workspaceSlug: positional[0],
     projectKey: positional[1].toUpperCase(),
-    dir: resolve(options.dir!),
+    dir: resolve(dir),
+    scope,
+    force,
+    skipLogin,
   }
-}
-
-function resolveConfig(options: Options): { config: LocalConfig; fresh: boolean } {
-  const stored = loadLocalConfig()
-
-  const supabaseUrl = options.supabaseUrl ?? process.env[ENV_KEYS.supabaseUrl] ?? stored.supabaseUrl
-  const supabaseAnonKey =
-    options.anonKey ?? process.env[ENV_KEYS.supabaseAnonKey] ?? stored.supabaseAnonKey
-  const webUrl = options.webUrl ?? process.env[ENV_KEYS.webUrl] ?? stored.webUrl
-
-  const missing: string[] = []
-  if (!supabaseUrl) missing.push("--supabase-url")
-  if (!supabaseAnonKey) missing.push("--anon-key")
-  if (!webUrl) missing.push("--web-url")
-
-  if (!supabaseUrl || !supabaseAnonKey || !webUrl) {
-    throw new Error(
-      [
-        `Falta la configuración de my-tracker: ${missing.join(", ")}.`,
-        "",
-        "Solo hace falta la primera vez; después queda guardada en",
-        localConfigPath(),
-        "",
-        "Ejemplo:",
-        `  my-tracker-mcp-init ${options.workspaceSlug} ${options.projectKey} \\`,
-        "    --supabase-url https://xxxx.supabase.co \\",
-        "    --anon-key <la anon key pública de my-tracker> \\",
-        "    --web-url https://tracker.jeffercbs.com",
-      ].join("\n")
-    )
-  }
-
-  const config: LocalConfig = { supabaseUrl, supabaseAnonKey, webUrl }
-  const fresh =
-    stored.supabaseUrl !== supabaseUrl ||
-    stored.supabaseAnonKey !== supabaseAnonKey ||
-    stored.webUrl !== webUrl
-
-  return { config, fresh }
 }
 
 async function ensureSession(skipLogin: boolean): Promise<string> {
@@ -162,24 +105,15 @@ async function ensureSession(skipLogin: boolean): Promise<string> {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const { config, fresh } = resolveConfig(options)
-
-  applyToEnv(config)
-  if (fresh) {
-    saveLocalConfig(config)
-  }
 
   console.log(`Configurando ${options.workspaceSlug}/${options.projectKey} en ${options.dir}`)
+  console.log(`my-tracker: ${resolveWebUrl()}`)
   console.log("")
 
   const email = await ensureSession(options.skipLogin)
   console.log(`1/3  Sesión: ${email}`)
 
-  const registration = registerMcpServer({
-    scope: options.scope,
-    directory: options.dir,
-    config,
-  })
+  const registration = registerMcpServer({ scope: options.scope, directory: options.dir })
   console.log(
     `2/3  Servidor MCP: ${registration.target}${
       registration.changed ? "" : ` (${registration.detail ?? "sin cambios"})`
@@ -195,7 +129,7 @@ async function main() {
     workspaceSlug: options.workspaceSlug,
     projectKey: options.projectKey,
     directory: options.dir,
-    webUrl: config.webUrl,
+    webUrl: resolveWebUrl(),
     force: options.force,
   })
 

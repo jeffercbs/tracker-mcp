@@ -6,7 +6,7 @@ async function main() {
   const session = loadSession()
 
   if (session) {
-    const client = createAnonClient()
+    const client = await createAnonClient()
     await client.auth
       .setSession({ access_token: session.accessToken, refresh_token: session.refreshToken })
       .then(() => client.auth.signOut())
