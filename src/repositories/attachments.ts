@@ -1,5 +1,5 @@
-import { basename } from "node:path"
-import { readFile } from "node:fs/promises"
+import { basename, resolve } from "node:path"
+import { readFile, stat } from "node:fs/promises"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { dbErrorMessage } from "./errors.js"
@@ -45,22 +45,69 @@ export function guessMimeType(filename: string): string | undefined {
 }
 
 export function sanitizeFilename(filename: string) {
-  const trimmed = filename.trim().slice(-120)
+  const base = filename.trim().split(/[\\/]/).pop() ?? ""
+  const trimmed = base.slice(-120).replace(/^\.+/, "")
   return trimmed.replace(/[^a-zA-Z0-9._-]/g, "_") || "archivo"
 }
 
-async function signedUrl(client: SupabaseClient, path: string, expiresInSeconds = 60 * 60) {
+const BLOCKED_FILENAMES = [
+  /^\.env(\..*)?$/i,
+  /^id_(rsa|dsa|ecdsa|ed25519)$/i,
+  /^\.npmrc$/i,
+  /^\.netrc$/i,
+  /^credentials$/i,
+  /^\.git-credentials$/i,
+]
+
+const BLOCKED_EXTENSIONS = new Set(["pem", "key", "p12", "pfx", "keystore", "jks", "ppk"])
+
+function assertUploadAllowed(originalName: string) {
+  const base = originalName.trim().split(/[\\/]/).pop() ?? ""
+  const extension = base.includes(".") ? base.split(".").pop()!.toLowerCase() : ""
+
+  if (BLOCKED_FILENAMES.some((pattern) => pattern.test(base)) || BLOCKED_EXTENSIONS.has(extension)) {
+    throw new Error(
+      `"${base}" parece un fichero de credenciales o de configuración sensible, así que no se sube. Adjunta solo evidencia (capturas, registros ya depurados, documentos).`
+    )
+  }
+}
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60
+
+async function signedUrl(client: SupabaseClient, path: string) {
   const { data, error } = await client.storage
     .from(ATTACHMENTS_BUCKET)
-    .createSignedUrl(path, expiresInSeconds)
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS)
   if (error || !data) {
     return null
   }
   return data.signedUrl
 }
 
-function mapAttachment(client: SupabaseClient, row: any): Promise<AttachmentDTO> {
-  return signedUrl(client, row.storage_path).then((url) => ({
+async function signedUrls(
+  client: SupabaseClient,
+  paths: string[]
+): Promise<Map<string, string | null>> {
+  const urls = new Map<string, string | null>()
+  if (paths.length === 0) return urls
+
+  const { data, error } = await client.storage
+    .from(ATTACHMENTS_BUCKET)
+    .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)
+
+  if (error || !data) {
+    for (const path of paths) urls.set(path, null)
+    return urls
+  }
+
+  for (const entry of data) {
+    urls.set(entry.path ?? "", entry.signedUrl ?? null)
+  }
+  return urls
+}
+
+function mapAttachment(row: any, url: string | null): AttachmentDTO {
+  return {
     id: row.id,
     issueId: row.issue_id,
     filename: row.filename,
@@ -69,7 +116,7 @@ function mapAttachment(client: SupabaseClient, row: any): Promise<AttachmentDTO>
     createdBy: row.created_by,
     createdAt: row.created_at,
     url,
-  }))
+  }
 }
 
 export async function listAttachmentsForIssue(
@@ -86,7 +133,12 @@ export async function listAttachmentsForIssue(
     throw new Error(dbErrorMessage("No se pudieron cargar los adjuntos", error))
   }
 
-  return Promise.all((data ?? []).map((row) => mapAttachment(client, row)))
+  const rows = data ?? []
+  const urls = await signedUrls(
+    client,
+    rows.map((row: any) => row.storage_path)
+  )
+  return rows.map((row: any) => mapAttachment(row, urls.get(row.storage_path) ?? null))
 }
 
 export interface AttachmentSource {
@@ -102,13 +154,28 @@ async function readSource(source: AttachmentSource): Promise<{
   mimeType: string | undefined
 }> {
   if (source.filePath) {
-    const bytes = await readFile(source.filePath).catch((err: NodeJS.ErrnoException) => {
+    const path = resolve(source.filePath)
+    assertUploadAllowed(source.filename ?? basename(path))
+
+    const info = await stat(path).catch((err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
         throw new Error(`No existe el archivo "${source.filePath}"`)
       }
       throw new Error(`No se pudo leer "${source.filePath}": ${err.message}`)
     })
-    const filename = sanitizeFilename(source.filename ?? basename(source.filePath))
+    if (!info.isFile()) {
+      throw new Error(`"${source.filePath}" no es un archivo`)
+    }
+    if (info.size > MAX_UPLOAD_BYTES) {
+      throw new Error(
+        `El archivo supera el límite de ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`
+      )
+    }
+
+    const bytes = await readFile(path).catch((err: NodeJS.ErrnoException) => {
+      throw new Error(`No se pudo leer "${source.filePath}": ${err.message}`)
+    })
+    const filename = sanitizeFilename(source.filename ?? basename(path))
     return { bytes, filename, mimeType: source.mimeType ?? guessMimeType(filename) }
   }
 
@@ -116,6 +183,7 @@ async function readSource(source: AttachmentSource): Promise<{
     if (!source.filename) {
       throw new Error("Con `base64` también hay que enviar `filename`")
     }
+    assertUploadAllowed(source.filename)
     const bytes = Buffer.from(source.base64, "base64")
     const filename = sanitizeFilename(source.filename)
     return { bytes, filename, mimeType: source.mimeType ?? guessMimeType(filename) }
@@ -172,7 +240,7 @@ export async function uploadIssueAttachment(
     throw new Error(dbErrorMessage("No se pudo guardar el adjunto", error))
   }
 
-  return mapAttachment(client, data)
+  return mapAttachment(data, await signedUrl(client, path))
 }
 
 export async function deleteAttachment(client: SupabaseClient, attachmentId: string) {

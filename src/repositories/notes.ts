@@ -6,6 +6,7 @@ export interface NoteDTO {
   id: string
   workspaceId: string
   projectId: string | null
+  subprojectId: string | null
   issueId: string | null
   authorId: string
   title: string
@@ -18,7 +19,7 @@ export interface NoteDTO {
 }
 
 const NOTE_SELECT =
-  "id, workspace_id, project_id, issue_id, author_id, title, content, pinned, visibility, color, created_at, updated_at"
+  "id, workspace_id, project_id, subproject_id, issue_id, author_id, title, content, pinned, visibility, color, created_at, updated_at"
 
 const DEFAULT_LIST_LIMIT = 50
 const MAX_LIST_LIMIT = 200
@@ -28,6 +29,7 @@ function mapNote(row: any): NoteDTO {
     id: row.id,
     workspaceId: row.workspace_id,
     projectId: row.project_id,
+    subprojectId: row.subproject_id ?? null,
     issueId: row.issue_id,
     authorId: row.author_id,
     title: row.title,
@@ -93,6 +95,7 @@ export async function createNote(
   input: {
     workspaceId: string
     projectId: string
+    subprojectId?: string
     issueId?: string
     authorId: string
     title: string
@@ -105,6 +108,7 @@ export async function createNote(
     .insert({
       workspace_id: input.workspaceId,
       project_id: input.projectId,
+      subproject_id: input.subprojectId,
       issue_id: input.issueId,
       author_id: input.authorId,
       title: input.title,

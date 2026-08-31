@@ -5,7 +5,16 @@ import { getUserClient } from "../auth/supabase-client.js"
 import * as attachments from "../repositories/attachments.js"
 import * as issues from "../repositories/issues.js"
 import { resolveProject } from "./resolve-project.js"
-import { ok, fail } from "./response.js"
+import { formatArg, mdFields, mdSection, mdTable, ok, fail } from "./response.js"
+import { AttachmentSchema } from "./schemas.js"
+
+function attachmentsTable(list: attachments.AttachmentDTO[]) {
+  return mdTable(
+    ["Archivo", "Tipo", "Bytes", "URL (1 hora)", "Id"],
+    list.map((item) => [item.filename, item.mimeType, item.size, item.url, item.id]),
+    "Esta incidencia no tiene adjuntos"
+  )
+}
 
 export function registerAttachmentTools(server: McpServer) {
   server.registerTool(
@@ -18,17 +27,27 @@ export function registerAttachmentTools(server: McpServer) {
         workspaceSlug: z.string(),
         projectKey: z.string(),
         issueNumber: z.number().int().positive(),
+        format: formatArg,
       },
+      outputSchema: { attachments: z.array(AttachmentSchema) },
     },
-    async ({ workspaceSlug, projectKey, issueNumber }) => {
+    async ({ workspaceSlug, projectKey, issueNumber, format }) => {
       try {
         const { client } = await getUserClient()
         const { project } = await resolveProject(client, workspaceSlug, projectKey)
-        const issue = await issues.getIssueByNumber(client, project.id, issueNumber)
+        const issue = await issues.findIssueRef(client, project.id, issueNumber)
         if (!issue) {
           return fail(new Error(`No se encontró la incidencia #${issueNumber} en ${projectKey}`))
         }
-        return ok(await attachments.listAttachmentsForIssue(client, issue.id))
+        const list = await attachments.listAttachmentsForIssue(client, issue.id)
+        return ok(
+          { attachments: list },
+          {
+            format,
+            markdown: (data) =>
+              mdSection(`Adjuntos de #${issueNumber}`, attachmentsTable(data.attachments), 1),
+          }
+        )
       } catch (err) {
         return fail(err)
       }
@@ -40,7 +59,7 @@ export function registerAttachmentTools(server: McpServer) {
     {
       title: "Adjuntar evidencia",
       description:
-        "Sube una captura de pantalla u otro archivo como evidencia de una incidencia. Pasa `filePath` con la ruta local del archivo, o `base64` junto con `filename` si tienes el contenido en memoria. Límite de 10MB.",
+        "Sube una captura de pantalla u otro archivo como evidencia de una incidencia. SOLO se llama cuando la persona usuaria pide explícitamente que se adjunte algo: no subas capturas ni archivos por iniciativa propia. Si crees que una imagen ayudaría, ofrécela y espera a que te digan que sí. Pasa `filePath` con la ruta local del archivo, o `base64` junto con `filename` si tienes el contenido en memoria. Límite de 10MB. El servidor rechaza ficheros de credenciales (.env, claves, certificados): subir un adjunto lo comparte con todo el workspace.",
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
@@ -58,13 +77,15 @@ export function registerAttachmentTools(server: McpServer) {
           .string()
           .optional()
           .describe("Tipo MIME. Si se omite se deduce de la extensión"),
+        format: formatArg,
       },
+      outputSchema: { attachment: AttachmentSchema },
     },
     async (input) => {
       try {
         const { client, userId } = await getUserClient()
         const { project } = await resolveProject(client, input.workspaceSlug, input.projectKey)
-        const issue = await issues.getIssueByNumber(client, project.id, input.issueNumber)
+        const issue = await issues.findIssueRef(client, project.id, input.issueNumber)
         if (!issue) {
           return fail(
             new Error(`No se encontró la incidencia #${input.issueNumber} en ${input.projectKey}`)
@@ -82,7 +103,24 @@ export function registerAttachmentTools(server: McpServer) {
             mimeType: input.mimeType,
           },
         })
-        return ok(attachment)
+        return ok(
+          { attachment },
+          {
+            format: input.format,
+            markdown: (data) =>
+              mdSection(
+                "Evidencia adjuntada",
+                mdFields([
+                  ["Archivo", data.attachment.filename],
+                  ["Tipo", data.attachment.mimeType],
+                  ["Bytes", data.attachment.size],
+                  ["URL (1 hora)", data.attachment.url],
+                  ["Id", data.attachment.id],
+                ]),
+                1
+              ),
+          }
+        )
       } catch (err) {
         return fail(err)
       }
@@ -94,16 +132,21 @@ export function registerAttachmentTools(server: McpServer) {
     {
       title: "Eliminar adjunto",
       description:
-        "Elimina un adjunto de una incidencia, tanto su registro como el archivo almacenado. Usa list_issue_attachments para obtener el attachmentId.",
+        "Elimina un adjunto de una incidencia, tanto su registro como el archivo almacenado, y no se puede deshacer. SOLO se llama cuando la persona usuaria pide borrar ese adjunto concreto. Usa list_issue_attachments para obtener el attachmentId.",
       inputSchema: {
-        attachmentId: z.string().uuid(),
+        attachmentId: z.uuid(),
+        format: formatArg,
       },
+      outputSchema: { deleted: z.string() },
     },
-    async ({ attachmentId }) => {
+    async ({ attachmentId, format }) => {
       try {
         const { client } = await getUserClient()
         await attachments.deleteAttachment(client, attachmentId)
-        return ok({ deleted: attachmentId })
+        return ok(
+          { deleted: attachmentId },
+          { format, markdown: (data) => `Adjunto ${data.deleted} eliminado.` }
+        )
       } catch (err) {
         return fail(err)
       }

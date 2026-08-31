@@ -17,6 +17,8 @@ export interface IssueListItemDTO {
   sprintId: string | null
   status: { id: string; name: string; category: string; color: string } | null
   type: { id: string; name: string; color: string } | null
+  module: { id: string; name: string; color: string } | null
+  subproject: { id: string; name: string; slug: string; color: string } | null
   labels: { id: string; name: string; color: string }[]
 }
 
@@ -50,17 +52,37 @@ const LIST_SELECT = `
   id, project_id, number, title, priority, due_date, created_at, updated_at, assignee_id, reporter_id, sprint_id,
   status:issue_statuses(id, name, category, color),
   type:issue_types(id, name, color),
+  module:issue_modules(id, name, color),
+  subproject:subprojects(id, name, slug, color),
   issue_labels(labels(id, name, color))
 `
 
-const DETAIL_SELECT = `
+const DETAIL_BASE_SELECT = `
   id, project_id, number, title, description, steps_to_reproduce, business_logic, resolution_notes, priority, due_date, created_at, updated_at, assignee_id, reporter_id, sprint_id,
   status:issue_statuses(id, name, category, color),
   type:issue_types(id, name, color),
-  issue_labels(labels(id, name, color)),
-  comments(id, author_id, body, created_at),
-  activity_log(id, actor_id, action, from_value, to_value, created_at)
+  module:issue_modules(id, name, color),
+  subproject:subprojects(id, name, slug, color),
+  issue_labels(labels(id, name, color))
 `
+
+export interface IssueDetailOptions {
+  includeComments?: boolean
+  includeActivity?: boolean
+  includeAttachments?: boolean
+  historyLimit?: number
+}
+
+const DEFAULT_HISTORY_LIMIT = 20
+
+function detailSelect(options: IssueDetailOptions): string {
+  const parts = [DETAIL_BASE_SELECT.trim()]
+  if (options.includeComments) parts.push("comments(id, author_id, body, created_at)")
+  if (options.includeActivity) {
+    parts.push("activity_log(id, actor_id, action, from_value, to_value, created_at)")
+  }
+  return parts.join(",\n  ")
+}
 
 function mapIssueRow(row: any): IssueListItemDTO {
   return {
@@ -77,6 +99,8 @@ function mapIssueRow(row: any): IssueListItemDTO {
     sprintId: row.sprint_id,
     status: row.status ?? null,
     type: row.type ?? null,
+    module: row.module ?? null,
+    subproject: row.subproject ?? null,
     labels: (row.issue_labels ?? []).map((entry: any) => entry.labels).filter(Boolean),
   }
 }
@@ -101,30 +125,99 @@ function mapActivity(row: any): ActivityEntryDTO {
   }
 }
 
+function lastN<T>(rows: T[], limit: number): T[] {
+  return rows.length > limit ? rows.slice(rows.length - limit) : rows
+}
+
 async function mapIssueDetail(
   client: SupabaseClient,
-  row: any
+  row: any,
+  options: IssueDetailOptions = {}
 ): Promise<IssueDetailDTO> {
+  const limit = options.historyLimit ?? DEFAULT_HISTORY_LIMIT
   return {
     ...mapIssueRow(row),
     description: row.description ?? "",
     stepsToReproduce: row.steps_to_reproduce ?? "",
     businessLogic: row.business_logic ?? "",
     resolutionNotes: row.resolution_notes ?? "",
-    comments: (row.comments ?? []).map(mapComment),
-    activity: (row.activity_log ?? []).map(mapActivity),
-    attachments: await listAttachmentsForIssue(client, row.id),
+    comments: lastN((row.comments ?? []).map(mapComment), limit),
+    activity: lastN((row.activity_log ?? []).map(mapActivity), limit),
+    attachments: options.includeAttachments ? await listAttachmentsForIssue(client, row.id) : [],
   }
 }
 
 const DEFAULT_LIST_LIMIT = 50
 const MAX_LIST_LIMIT = 200
 
+export type IssueSearchField =
+  | "title"
+  | "description"
+  | "stepsToReproduce"
+  | "businessLogic"
+  | "resolutionNotes"
+
+const SEARCH_COLUMNS: Record<IssueSearchField, string> = {
+  title: "title",
+  description: "description",
+  stepsToReproduce: "steps_to_reproduce",
+  businessLogic: "business_logic",
+  resolutionNotes: "resolution_notes",
+}
+
+const DEFAULT_SEARCH_FIELDS: IssueSearchField[] = [
+  "title",
+  "description",
+  "stepsToReproduce",
+  "businessLogic",
+  "resolutionNotes",
+]
+
+export type IssueSortField = "number" | "createdAt" | "updatedAt" | "dueDate"
+
+const SORT_COLUMNS: Record<IssueSortField, string> = {
+  number: "number",
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+  dueDate: "due_date",
+}
+
 export interface ListIssuesFilters {
+  /** Texto libre. Admite % como comodín; se busca sin distinguir mayúsculas. */
+  query?: string
+  searchIn?: IssueSearchField[]
   statusCategory?: string
+  statusIds?: string[]
+  typeIds?: string[]
+  moduleIds?: string[]
+  /** Incidencias sin módulo asignado. Excluyente con moduleIds. */
+  withoutModule?: boolean
+  subprojectId?: string
   assigneeId?: string
+  /** Solo incidencias sin nadie asignado. Excluyente con assigneeId. */
+  unassigned?: boolean
+  reporterId?: string
+  priorities?: string[]
+  /** Incidencias que tengan AL MENOS una de estas etiquetas. */
+  labelIds?: string[]
+  createdAfter?: string
+  createdBefore?: string
+  updatedAfter?: string
+  updatedBefore?: string
+  dueAfter?: string
+  dueBefore?: string
+  /** true: solo con fecha límite; false: solo sin fecha límite. */
+  hasDueDate?: boolean
+  sortBy?: IssueSortField
+  sortOrder?: "asc" | "desc"
   limit?: number
   offset?: number
+}
+
+export interface ListIssuesResult {
+  items: IssueListItemDTO[]
+  /** Cuántas incidencias cumplen el filtro en total, más allá de esta página. */
+  total: number
 }
 
 async function statusIdsForCategory(
@@ -144,58 +237,199 @@ async function statusIdsForCategory(
   return (data ?? []).map((row) => row.id)
 }
 
+async function issueIdsWithLabels(
+  client: SupabaseClient,
+  projectId: string,
+  labelIds: string[]
+): Promise<string[]> {
+  const { data, error } = await client
+    .from("issue_labels")
+    .select("issue_id, issues!inner(project_id)")
+    .eq("issues.project_id", projectId)
+    .in("label_id", labelIds)
+
+  if (error) {
+    throw new Error(dbErrorMessage("No se pudieron resolver las etiquetas del filtro", error))
+  }
+  return Array.from(new Set((data ?? []).map((row: any) => row.issue_id)))
+}
+
+/**
+ * Una fecha suelta (YYYY-MM-DD) como cota superior se interpreta hasta el final
+ * de ese día, para que "hasta el 5" incluya al 5.
+ */
+function endOfDay(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? `${value.trim()}T23:59:59.999Z` : value
+}
+
+/** Escapa el valor para meterlo entre comillas en un filtro `or` de PostgREST. */
+function quoteFilterValue(value: string): string {
+  return value.replace(/["\\]/g, (match) => `\\${match}`)
+}
+
 export async function listIssuesForProject(
   client: SupabaseClient,
   projectId: string,
   filters?: ListIssuesFilters
-): Promise<IssueListItemDTO[]> {
+): Promise<ListIssuesResult> {
   const limit = Math.min(filters?.limit ?? DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
   const offset = filters?.offset ?? 0
+  const empty: ListIssuesResult = { items: [], total: 0 }
 
-  let query = client.from("issues").select(LIST_SELECT).eq("project_id", projectId)
+  let query = client
+    .from("issues")
+    .select(LIST_SELECT, { count: "exact" })
+    .eq("project_id", projectId)
 
-  if (filters?.assigneeId) {
+  if (filters?.query && filters.query.trim().length > 0) {
+    const term = quoteFilterValue(filters.query.trim())
+    const fields = filters.searchIn?.length ? filters.searchIn : DEFAULT_SEARCH_FIELDS
+    const conditions = fields
+      .map((field) => `${SEARCH_COLUMNS[field]}.ilike."%${term}%"`)
+      .join(",")
+    query = query.or(conditions)
+  }
+
+  if (filters?.unassigned) {
+    query = query.is("assignee_id", null)
+  } else if (filters?.assigneeId) {
     query = query.eq("assignee_id", filters.assigneeId)
   }
 
-  if (filters?.statusCategory) {
+  if (filters?.reporterId) {
+    query = query.eq("reporter_id", filters.reporterId)
+  }
+
+  if (filters?.priorities?.length) {
+    query = query.in("priority", filters.priorities)
+  }
+
+  if (filters?.typeIds?.length) {
+    query = query.in("type_id", filters.typeIds)
+  }
+
+  if (filters?.withoutModule) {
+    query = query.is("module_id", null)
+  } else if (filters?.moduleIds?.length) {
+    query = query.in("module_id", filters.moduleIds)
+  }
+
+  if (filters?.subprojectId) {
+    query = query.eq("subproject_id", filters.subprojectId)
+  }
+
+  if (filters?.statusIds?.length) {
+    query = query.in("status_id", filters.statusIds)
+  } else if (filters?.statusCategory) {
     const statusIds = await statusIdsForCategory(client, projectId, filters.statusCategory)
     if (statusIds.length === 0) {
-      return []
+      return empty
     }
     query = query.in("status_id", statusIds)
   }
 
-  const { data, error } = await query
-    .order("number", { ascending: false })
+  if (filters?.labelIds?.length) {
+    const issueIds = await issueIdsWithLabels(client, projectId, filters.labelIds)
+    if (issueIds.length === 0) {
+      return empty
+    }
+    query = query.in("id", issueIds)
+  }
+
+  if (filters?.createdAfter) query = query.gte("created_at", filters.createdAfter)
+  if (filters?.createdBefore) query = query.lte("created_at", endOfDay(filters.createdBefore))
+  if (filters?.updatedAfter) query = query.gte("updated_at", filters.updatedAfter)
+  if (filters?.updatedBefore) query = query.lte("updated_at", endOfDay(filters.updatedBefore))
+  if (filters?.dueAfter) query = query.gte("due_date", filters.dueAfter)
+  if (filters?.dueBefore) query = query.lte("due_date", filters.dueBefore)
+
+  if (filters?.hasDueDate === true) query = query.not("due_date", "is", null)
+  if (filters?.hasDueDate === false) query = query.is("due_date", null)
+
+  const sortColumn = SORT_COLUMNS[filters?.sortBy ?? "number"]
+  const ascending = filters?.sortOrder === "asc"
+
+  const { data, error, count } = await query
+    .order(sortColumn, { ascending, nullsFirst: false })
     .range(offset, offset + limit - 1)
 
   if (error) {
     throw new Error(dbErrorMessage("No se pudieron cargar las incidencias", error))
   }
 
-  return (data ?? []).map(mapIssueRow)
+  return { items: (data ?? []).map(mapIssueRow), total: count ?? (data ?? []).length }
 }
 
-export async function getIssueByNumber(
+export interface IssueRef {
+  id: string
+  number: number
+  title: string
+}
+
+export async function findIssueRef(
   client: SupabaseClient,
   projectId: string,
   number: number
-): Promise<IssueDetailDTO | null> {
+): Promise<IssueRef | null> {
   const { data, error } = await client
     .from("issues")
-    .select(DETAIL_SELECT)
+    .select("id, number, title")
     .eq("project_id", projectId)
     .eq("number", number)
-    .order("created_at", { referencedTable: "comments", ascending: true })
-    .order("created_at", { referencedTable: "activity_log", ascending: true })
     .maybeSingle()
 
   if (error || !data) {
     return null
   }
+  return { id: data.id, number: data.number, title: data.title }
+}
 
-  return mapIssueDetail(client, data)
+export async function findIssuesByTitle(
+  client: SupabaseClient,
+  projectId: string,
+  pattern: string,
+  limit = 5
+): Promise<IssueRef[]> {
+  const term = pattern.trim()
+  if (term.length === 0) return []
+
+  const { data, error } = await client
+    .from("issues")
+    .select("id, number, title")
+    .eq("project_id", projectId)
+    .ilike("title", term)
+    .limit(limit)
+
+  if (error) return []
+  return (data ?? []).map((row: any) => ({ id: row.id, number: row.number, title: row.title }))
+}
+
+export async function getIssueByNumber(
+  client: SupabaseClient,
+  projectId: string,
+  number: number,
+  options: IssueDetailOptions = {}
+): Promise<IssueDetailDTO | null> {
+  let query = client
+    .from("issues")
+    .select(detailSelect(options))
+    .eq("project_id", projectId)
+    .eq("number", number)
+
+  if (options.includeComments) {
+    query = query.order("created_at", { referencedTable: "comments", ascending: true })
+  }
+  if (options.includeActivity) {
+    query = query.order("created_at", { referencedTable: "activity_log", ascending: true })
+  }
+
+  const { data, error } = await query.maybeSingle()
+
+  if (error || !data) {
+    return null
+  }
+
+  return mapIssueDetail(client, data, options)
 }
 
 export async function createIssue(
@@ -209,11 +443,14 @@ export async function createIssue(
     resolutionNotes?: string
     statusId?: string
     typeId?: string
+    moduleId?: string
+    subprojectId?: string
     priority?: string
     assigneeId?: string
     dueDate?: string
     labelIds?: string[]
     reporterId: string
+    createdAt?: string
   }
 ): Promise<IssueDetailDTO> {
   const { data: allocated, error: numberError } = await client.rpc("allocate_issue_number", {
@@ -248,12 +485,15 @@ export async function createIssue(
       resolution_notes: input.resolutionNotes,
       status_id: statusId,
       type_id: input.typeId,
+      module_id: input.moduleId,
+      subproject_id: input.subprojectId,
       priority: input.priority ?? "none",
       assignee_id: input.assigneeId,
       due_date: input.dueDate,
       reporter_id: input.reporterId,
+      ...(input.createdAt !== undefined ? { created_at: input.createdAt } : {}),
     })
-    .select(DETAIL_SELECT)
+    .select(DETAIL_BASE_SELECT)
     .single()
 
   if (error) {
@@ -312,9 +552,13 @@ export async function updateIssue(
     resolutionNotes?: string
     statusId?: string
     typeId?: string | null
+    moduleId?: string | null
+    subprojectId?: string
     priority?: string
     assigneeId?: string | null
     dueDate?: string | null
+    createdAt?: string
+    updatedAt?: string
   }
 ) {
   const update: Record<string, unknown> = {}
@@ -325,9 +569,13 @@ export async function updateIssue(
   if (patch.resolutionNotes !== undefined) update.resolution_notes = patch.resolutionNotes
   if (patch.statusId !== undefined) update.status_id = patch.statusId
   if (patch.typeId !== undefined) update.type_id = patch.typeId
+  if (patch.moduleId !== undefined) update.module_id = patch.moduleId
+  if (patch.subprojectId !== undefined) update.subproject_id = patch.subprojectId
   if (patch.priority !== undefined) update.priority = patch.priority
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate
+  if (patch.createdAt !== undefined) update.created_at = patch.createdAt
+  if (patch.updatedAt !== undefined) update.updated_at = patch.updatedAt
 
   if (Object.keys(update).length === 0) {
     return

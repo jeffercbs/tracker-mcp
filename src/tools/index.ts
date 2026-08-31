@@ -6,6 +6,8 @@ import { registerProjectTools } from "./projects.js"
 import { registerIssueTools } from "./issues.js"
 import { registerAttachmentTools } from "./attachments.js"
 import { registerNoteTools } from "./notes.js"
+import { registerArchitectureTools } from "./architecture.js"
+import { registerSkillTools } from "./skills.js"
 
 export function registerAllTools(server: McpServer) {
   registerAuthTools(server)
@@ -14,4 +16,6 @@ export function registerAllTools(server: McpServer) {
   registerIssueTools(server)
   registerAttachmentTools(server)
   registerNoteTools(server)
+  registerArchitectureTools(server)
+  registerSkillTools(server)
 }

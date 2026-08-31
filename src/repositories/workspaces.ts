@@ -24,8 +24,10 @@ export async function listWorkspacesForUser(
     throw new Error(dbErrorMessage("No se pudieron cargar los workspaces", error))
   }
 
+  // Los workspaces "personal" que crea el trigger de registro ya no forman
+  // parte del producto: solo un superadministrador crea workspaces.
   return (data ?? [])
-    .filter((row: any) => row.workspaces)
+    .filter((row: any) => row.workspaces && row.workspaces.kind === "company")
     .map((row: any) => ({
       id: row.workspaces.id,
       name: row.workspaces.name,

@@ -59,6 +59,16 @@ export async function resolveStatus(
     return byCategory[0]
   }
 
+  if (byCategory.length > 1) {
+    try {
+      return pick(statuses, value, "un estado")
+    } catch {
+      throw new Error(
+        `La categoría "${value}" tiene varios estados en este proyecto: ${byCategory.map((s) => s.name).join(", ")}. Indica cuál por nombre o por id.`
+      )
+    }
+  }
+
   return pick(statuses, value, "un estado")
 }
 
@@ -144,5 +154,149 @@ export async function resolveAssigneeId(
 
   throw new Error(
     `No se encontró el miembro "${value}". Disponibles: ${members.map((m) => m.email).join(", ") || "ninguno"}`
+  )
+}
+
+/**
+ * Resuelve referencias a estados para un FILTRO: a diferencia de resolveStatus,
+ * una categoría o un nombre parcial que coincida con varios estados devuelve
+ * todos, en vez de fallar por ambigüedad.
+ */
+export async function resolveStatusIdsForFilter(
+  client: SupabaseClient,
+  projectId: string,
+  values: string[]
+): Promise<string[]> {
+  const statuses = await projects.listIssueStatuses(client, projectId)
+  const resolved: string[] = []
+
+  for (const value of values) {
+    if (isUuid(value)) {
+      resolved.push(pick(statuses, value, "un estado").id)
+      continue
+    }
+
+    const target = normalize(value)
+    const byCategory = statuses.filter((status) => normalize(status.category) === target)
+    if (byCategory.length > 0) {
+      resolved.push(...byCategory.map((status) => status.id))
+      continue
+    }
+
+    const byName = statuses.filter((status) => normalize(status.name).includes(target))
+    if (byName.length === 0) {
+      throw new Error(
+        `No se encontró ningún estado que coincida con "${value}". Disponibles: ${statuses.map((s) => s.name).join(", ") || "ninguno"}`
+      )
+    }
+    resolved.push(...byName.map((status) => status.id))
+  }
+
+  return Array.from(new Set(resolved))
+}
+
+/** Igual que resolveStatusIdsForFilter, para tipos de incidencia. */
+export async function resolveTypeIdsForFilter(
+  client: SupabaseClient,
+  projectId: string,
+  values: string[]
+): Promise<string[]> {
+  const types = await projects.listIssueTypes(client, projectId)
+  const resolved: string[] = []
+
+  for (const value of values) {
+    if (isUuid(value)) {
+      resolved.push(pick(types, value, "un tipo de incidencia").id)
+      continue
+    }
+
+    const target = normalize(value)
+    const matches = types.filter((type) => normalize(type.name).includes(target))
+    if (matches.length === 0) {
+      throw new Error(
+        `No se encontró ningún tipo que coincida con "${value}". Disponibles: ${types.map((t) => t.name).join(", ") || "ninguno"}`
+      )
+    }
+    resolved.push(...matches.map((type) => type.id))
+  }
+
+  return Array.from(new Set(resolved))
+}
+
+/**
+ * Persona para un filtro: acepta 'me'/'yo' además de correo, nombre o userId.
+ */
+export async function resolvePersonId(
+  client: SupabaseClient,
+  workspaceId: string,
+  value: string,
+  currentUserId: string
+): Promise<string> {
+  const target = normalize(value)
+  if (target === "me" || target === "yo" || target === "mi") {
+    return currentUserId
+  }
+  return resolveAssigneeId(client, workspaceId, value)
+}
+
+export async function resolveModuleId(
+  client: SupabaseClient,
+  projectId: string,
+  value: string
+): Promise<string> {
+  const modules = await projects.listIssueModules(client, projectId)
+  return pick(modules, value, "un módulo").id
+}
+
+export async function resolveSubproject(
+  client: SupabaseClient,
+  projectId: string,
+  value: string
+): Promise<projects.SubprojectOption> {
+  const subprojects = await projects.listSubprojects(client, projectId)
+  return pick(subprojects, value, "un subproyecto")
+}
+
+export async function resolveModuleIdsForFilter(
+  client: SupabaseClient,
+  projectId: string,
+  values: string[]
+): Promise<string[]> {
+  const modules = await projects.listIssueModules(client, projectId)
+  return values.map((value) => pick(modules, value, "un módulo").id)
+}
+
+/**
+ * En un proyecto agrupador toda incidencia vive en un subproyecto: si no se
+ * indica ninguno la incidencia quedaría fuera de todos los tableros, así que se
+ * exige explícitamente en vez de adivinar.
+ */
+export async function requireSubprojectForIssue(
+  client: SupabaseClient,
+  project: { id: string; key: string; isGroup: boolean },
+  value: string | undefined
+): Promise<string | undefined> {
+  if (!project.isGroup) {
+    if (value) {
+      throw new Error(
+        `El proyecto ${project.key} no es una agrupación, así que no lleva subproyecto.`
+      )
+    }
+    return undefined
+  }
+
+  if (value) {
+    return (await resolveSubproject(client, project.id, value)).id
+  }
+
+  const available = await projects.listSubprojects(client, project.id)
+  if (available.length === 0) {
+    throw new Error(
+      `El proyecto ${project.key} es una agrupación y todavía no tiene subproyectos a los que tengas acceso. Pide que creen uno o que te den permiso sobre un tablero.`
+    )
+  }
+
+  throw new Error(
+    `El proyecto ${project.key} es una agrupación: indica en qué subproyecto va la incidencia. Disponibles: ${available.map((s) => s.name).join(", ")}.`
   )
 }
