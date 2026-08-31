@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+*.log
+src
+scripts
+tsconfig.json
+pnpm-workspace.yaml
+pnpm-lock.yaml
