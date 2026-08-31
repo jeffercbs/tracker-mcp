@@ -49,12 +49,4 @@ export function saveLocalConfig(config: LocalConfig) {
   }
 }
 
-export function localConfigPath(): string {
-  return CONFIG_FILE
-}
 
-export function applyToEnv(config: LocalConfig) {
-  process.env[ENV_KEYS.supabaseUrl] = config.supabaseUrl
-  process.env[ENV_KEYS.supabaseAnonKey] = config.supabaseAnonKey
-  process.env[ENV_KEYS.webUrl] = config.webUrl
-}

@@ -108,6 +108,12 @@ en ese repositorio.
 
 - \`list_project_skills\` — qué hay disponible y en qué ruta va cada uno.
 - \`get_project_skill\` — uno concreto, con el fichero ya montado.
+- \`import_project_skills\` — el camino inverso: sube a my-tracker los skills
+  **propios** del repositorio (\`.claude/skills/*/SKILL.md\`, \`.claude/agents/*.md\`)
+  pasando la ruta y el contenido de cada fichero. Solo lo que escribió el equipo:
+  los instalados desde un registro o marketplace (\`skills-lock.json\`,
+  \`.agents/skills\`) y \`tracker-architecture\` se quedan fuera. No pisa los que ya
+  existan salvo que se pida \`overwrite\`.
 - \`install_project_skills\` — los ficheros de todos los activos. Cuando te
   pidan instalar, traer o configurar los skills del proyecto: llamá a esta tool
   y escribí cada fichero **tal cual** en la ruta que devuelve, dentro del

@@ -1,3 +1,3 @@
-import { requireUrlEnv } from "./env.js"
+import { resolveWebUrl } from "./resolve.js"
 
-export const webAppUrl = requireUrlEnv("MY_TRACKER_WEB_URL")
+export const webAppUrl = resolveWebUrl()

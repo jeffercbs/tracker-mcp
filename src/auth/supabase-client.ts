@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
-import { supabaseAnonKey, supabaseUrl } from "../config/env.js"
+import { resolveConfig } from "../config/resolve.js"
 import { clearSession, loadSession, saveSession, type StoredSession } from "./session-store.js"
 
 export class NotAuthenticatedError extends Error {
@@ -13,7 +13,8 @@ export class NotAuthenticatedError extends Error {
   }
 }
 
-export function createAnonClient(): SupabaseClient {
+export async function createAnonClient(): Promise<SupabaseClient> {
+  const { supabaseUrl, supabaseAnonKey } = await resolveConfig()
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -22,7 +23,7 @@ export function createAnonClient(): SupabaseClient {
 let refreshInFlight: Promise<StoredSession> | null = null
 
 async function doRefresh(session: StoredSession): Promise<StoredSession> {
-  const client = createAnonClient()
+  const client = await createAnonClient()
   const { data, error } = await client.auth.refreshSession({
     refresh_token: session.refreshToken,
   })
@@ -77,6 +78,7 @@ export async function getUserClient(): Promise<AuthenticatedClient> {
     return cached.value
   }
 
+  const { supabaseUrl, supabaseAnonKey } = await resolveConfig()
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: {

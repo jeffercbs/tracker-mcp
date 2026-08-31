@@ -2,8 +2,6 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { ENV_KEYS, type LocalConfig } from "../config/local-config.js"
-
 export const SERVER_NAME = "my-tracker"
 export const SERVER_PACKAGE = process.env.MY_TRACKER_MCP_PACKAGE?.trim() || "@jeffercbs/my-tracker-mcp"
 export const PROJECT_CONFIG_FILE = ".mcp.json"
@@ -17,21 +15,16 @@ export interface RegistrationResult {
   detail?: string
 }
 
-function serverEntry(config: LocalConfig) {
+function serverEntry() {
   return {
     command: "npx",
     args: ["-y", SERVER_PACKAGE],
-    env: {
-      [ENV_KEYS.supabaseUrl]: config.supabaseUrl,
-      [ENV_KEYS.supabaseAnonKey]: config.supabaseAnonKey,
-      [ENV_KEYS.webUrl]: config.webUrl,
-    },
   }
 }
 
-function registerInProject(directory: string, config: LocalConfig): RegistrationResult {
+function registerInProject(directory: string): RegistrationResult {
   const file = join(directory, PROJECT_CONFIG_FILE)
-  const entry = serverEntry(config)
+  const entry = serverEntry()
 
   let document: Record<string, unknown> = {}
   if (existsSync(file)) {
@@ -61,24 +54,8 @@ function registerInProject(directory: string, config: LocalConfig): Registration
   return { scope: "project", target: PROJECT_CONFIG_FILE, changed }
 }
 
-function registerForUser(config: LocalConfig): RegistrationResult {
-  const args = [
-    "mcp",
-    "add",
-    SERVER_NAME,
-    "-s",
-    "user",
-    "-e",
-    `${ENV_KEYS.supabaseUrl}=${config.supabaseUrl}`,
-    "-e",
-    `${ENV_KEYS.supabaseAnonKey}=${config.supabaseAnonKey}`,
-    "-e",
-    `${ENV_KEYS.webUrl}=${config.webUrl}`,
-    "--",
-    "npx",
-    "-y",
-    SERVER_PACKAGE,
-  ]
+function registerForUser(): RegistrationResult {
+  const args = ["mcp", "add", SERVER_NAME, "-s", "user", "--", "npx", "-y", SERVER_PACKAGE]
 
   try {
     execFileSync("claude", args, { stdio: "pipe", shell: process.platform === "win32" })
@@ -95,7 +72,7 @@ function registerForUser(config: LocalConfig): RegistrationResult {
     }
 
     throw new Error(
-      `No se pudo registrar el servidor con el CLI de Claude Code (${message.split("\n")[0]}). Registralo a mano:\n\n  claude mcp add ${SERVER_NAME} -s user -e ${ENV_KEYS.supabaseUrl}=${config.supabaseUrl} -e ${ENV_KEYS.supabaseAnonKey}=<anon key> -e ${ENV_KEYS.webUrl}=${config.webUrl} -- npx -y ${SERVER_PACKAGE}`
+      `No se pudo registrar el servidor con el CLI de Claude Code (${message.split("\n")[0]}). Registralo a mano:\n\n  claude mcp add ${SERVER_NAME} -s user -- npx -y ${SERVER_PACKAGE}`
     )
   }
 }
@@ -103,9 +80,6 @@ function registerForUser(config: LocalConfig): RegistrationResult {
 export function registerMcpServer(input: {
   scope: RegistrationScope
   directory: string
-  config: LocalConfig
 }): RegistrationResult {
-  return input.scope === "user"
-    ? registerForUser(input.config)
-    : registerInProject(input.directory, input.config)
+  return input.scope === "user" ? registerForUser() : registerInProject(input.directory)
 }

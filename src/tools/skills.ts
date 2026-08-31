@@ -4,6 +4,7 @@ import { z } from "zod"
 import { getUserClient } from "../auth/supabase-client.js"
 import * as skills from "../repositories/skills.js"
 import { renderSkillMarkdown, skillFilePath, toSkillFiles } from "../skill/project-skills.js"
+import { parseSkillFile } from "../skill/parse-skill.js"
 import { resolveProject } from "./resolve-project.js"
 import { formatArg, mdBlock, mdFields, mdJoin, mdSection, mdTable, ok, fail } from "./response.js"
 
@@ -15,6 +16,12 @@ const SkillSummarySchema = z.object({
   path: z.string(),
   enabled: z.boolean(),
   updatedAt: z.string(),
+})
+
+const SkillImportResultSchema = z.object({
+  name: z.string(),
+  kind: z.string(),
+  status: z.string(),
 })
 
 const SkillFileSchema = z.object({
@@ -131,6 +138,69 @@ export function registerSkillTools(server: McpServer) {
                   ["Activo", skill.enabled ? "sí" : "no"],
                 ]), 1),
                 mdBlock(data.skill.content, "El skill no tiene contenido")
+              ),
+          }
+        )
+      } catch (err) {
+        return fail(err)
+      }
+    }
+  )
+
+  server.registerTool(
+    "import_project_skills",
+    {
+      title: "Subir a my-tracker los skills del repositorio",
+      description:
+        "Sube a my-tracker los skills y subagentes PROPIOS del repositorio, para que queden compartidos con el equipo. Pasale el contenido crudo de cada fichero (`.claude/skills/<nombre>/SKILL.md` y `.claude/agents/<nombre>.md`) con su ruta: el servidor lee el frontmatter y crea cada uno. Sube solo lo que escribió el equipo para ese repositorio: nunca los skills instalados desde un registro o marketplace (los que estén en `skills-lock.json` o en `.agents/skills`), ni `tracker-architecture`, que lo instala my-tracker. Ante la duda sobre el origen de uno, preguntá antes de subirlo. Por defecto no toca los que ya existan en my-tracker; solo los reemplaza si se pide `overwrite`. Es una acción bajo petición: no subas nada por iniciativa propia.",
+      inputSchema: {
+        workspaceSlug: z.string(),
+        projectKey: z.string(),
+        files: z
+          .array(
+            z.object({
+              path: z
+                .string()
+                .describe("Ruta relativa dentro del repositorio, por ejemplo .claude/skills/qa/SKILL.md"),
+              content: z.string().describe("Contenido completo del fichero, frontmatter incluido"),
+            })
+          )
+          .min(1)
+          .max(50),
+        overwrite: z
+          .boolean()
+          .optional()
+          .describe("Si es true, reemplaza los que ya existan en my-tracker con el mismo nombre"),
+        format: formatArg,
+      },
+      outputSchema: { results: z.array(SkillImportResultSchema) },
+    },
+    async ({ workspaceSlug, projectKey, files, overwrite, format }) => {
+      try {
+        const { client, userId } = await getUserClient()
+        const { project } = await resolveProject(client, workspaceSlug, projectKey)
+
+        const parsed = files.map((file) => parseSkillFile(file))
+        const results = await skills.importProjectSkills(client, {
+          projectId: project.id,
+          userId,
+          skills: parsed,
+          overwrite: overwrite ?? false,
+        })
+
+        return ok(
+          { results },
+          {
+            format,
+            markdown: (data) =>
+              mdSection(
+                `Skills subidos a ${projectKey}`,
+                mdTable(
+                  ["Nombre", "Tipo", "Resultado"],
+                  data.results.map((result) => [result.name, result.kind, result.status]),
+                  "No se subió ningún skill"
+                ),
+                1
               ),
           }
         )
