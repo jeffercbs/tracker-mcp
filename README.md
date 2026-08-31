@@ -70,12 +70,16 @@ Registrá el servidor directo en Claude Code (o el cliente MCP que uses),
 apuntando a `npx @jeffercbs/my-tracker-mcp` en vez de una ruta local:
 
 ```bash
-claude mcp add my-tracker -s user \
-  -e NEXT_PUBLIC_SUPABASE_URL=<la misma NEXT_PUBLIC_SUPABASE_URL de my-tracker> \
-  -e NEXT_PUBLIC_SUPABASE_ANON_KEY=<la misma NEXT_PUBLIC_SUPABASE_ANON_KEY de my-tracker> \
-  -e MY_TRACKER_WEB_URL=https://tracker.jeffercbs.com \
-  -- npx -y @jeffercbs/my-tracker-mcp
+claude mcp add my-tracker -s user -- npx -y @jeffercbs/my-tracker-mcp
 ```
+
+No hace falta pasarle ninguna variable. El servidor pide la configuración
+pública de my-tracker (`GET /api/mcp/config`: la URL de Supabase y la anon key,
+las mismas que ya sirve el frontend a cualquier navegador) y la cachea en
+`~/.my-tracker-mcp/config.json`. Lo único sensible, tu sesión, vive aparte y
+solo se obtiene por navegador. Para apuntar a otra instancia, las variables
+`MY_TRACKER_WEB_URL`, `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+siguen teniendo prioridad.
 
 El paquete se publica ya compilado (solo `dist/`), así que `npx` lo descarga y
 lo ejecuta sin instalar dependencias de desarrollo ni compilar nada. Las
@@ -98,16 +102,6 @@ iniciada y skill de arquitectura instalado— parado en su raíz:
 npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-init <workspaceSlug> <PROJECT_KEY>
 ```
 
-La primera vez hay que pasarle la configuración; después queda guardada en
-`~/.my-tracker-mcp/config.json` y no vuelve a hacer falta:
-
-```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-init acme WEB \
-  --supabase-url https://xxxx.supabase.co \
-  --anon-key <la anon key pública de my-tracker> \
-  --web-url https://tracker.jeffercbs.com
-```
-
 Hace tres cosas, todas repetibles sin romper nada:
 
 1. **Sesión** — reutiliza la que haya en `~/.my-tracker-mcp/session.json`; si no hay, abre el navegador para autorizar.
@@ -118,10 +112,9 @@ Otras opciones: `--dir <ruta>` para operar sobre otro repositorio, `--force`
 para reemplazar un skill que cambió y `--skip-login` para fallar en vez de
 abrir el navegador.
 
-El `.mcp.json` queda con la URL de Supabase y la **anon key**, que es pública
-—es la misma que sirve el frontend—, así que se puede commitear para que el
-resto del equipo solo tenga que autenticarse. Si preferís no tenerla en el
-repositorio, usá `--scope user`.
+El `.mcp.json` que escribe no lleva ninguna credencial: solo el comando y el
+paquete. Se puede commitear tal cual, y cada persona del equipo solo tiene que
+autenticarse una vez.
 
 Si solo querés (re)instalar el skill, sin tocar el registro del servidor:
 
@@ -240,6 +233,7 @@ nombres.
 - `get_architecture_skill` — devuelve el skill `tracker-architecture` ya apuntando a un proyecto, y la ruta donde va dentro del repositorio.
 - `list_project_skills` / `get_project_skill` — los skills y subagentes que el equipo escribió para un proyecto en my-tracker.
 - `install_project_skills` — devuelve esos ficheros con su ruta y su contenido, listos para escribirlos en el repositorio.
+- `import_project_skills` — el camino inverso: sube a my-tracker los skills que ya viven en el repositorio.
 
 Todas las tools que **crean** algo (`create_issue`, `create_project`,
 `create_issue_type`, `create_issue_status`, `create_issue_module`,
@@ -310,8 +304,13 @@ montados en fichero, con el frontmatter que espera el agente:
 | `skill` | `.claude/skills/<nombre>/SKILL.md` |
 | `agent` | `.claude/agents/<nombre>.md` |
 
-Desde el chat, `install_project_skills` devuelve la lista de ficheros con su
-ruta y su contenido, y el agente los escribe. Desde la terminal:
+El flujo va en las dos direcciones:
+
+- **Del repositorio a my-tracker** — `import_project_skills` recibe la ruta y el
+  contenido crudo de cada fichero, lee el frontmatter y los da de alta. Es lo que
+  se usa la primera vez, para no reescribir a mano lo que ya existe en el repo.
+- **De my-tracker al repositorio** — `install_project_skills` devuelve la lista de
+  ficheros con su ruta y su contenido, y el agente los escribe. Desde la terminal:
 
 ```bash
 npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-skills acme WEB
