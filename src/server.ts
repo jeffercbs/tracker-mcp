@@ -125,6 +125,27 @@ en ese repositorio.
 Instalar skills es una acción bajo petición, como todo lo que crea material:
 no lo hagas por iniciativa propia porque veas que el proyecto tiene skills.
 
+## Flujos de trabajo del proyecto
+
+Un flujo es el proceso que el equipo dibujó en my-tracker para que trabajes sus
+incidencias: de qué estado y prioridad partir, qué implementar, qué validar y en
+qué URL de despliegue, y a qué estado mover cada incidencia al final. Cada paso
+puede llevar un rol asignado (frontend, backend, QA...) con sus propias
+instrucciones.
+
+- \`list_project_workflows\` — qué flujos hay. Cuando te pidan avanzar las
+  incidencias de un proyecto y no te digan cómo, mirá aquí antes de improvisar.
+- \`get_project_workflow\` — el flujo completo, ya redactado paso a paso.
+  Seguilo **en orden**: no te saltes pasos, no los reordenes y no los
+  "optimices". Si un paso pide confirmación humana, pará y preguntá.
+- \`get_workflow_skill\` — el fichero para dejar el flujo instalado en el
+  repositorio. Como con los skills, escribirlo es una acción bajo petición.
+
+El flujo describe el proceso; las acciones sobre las incidencias las hacés con
+las tools de siempre (\`list_issues\`, \`update_issue\`, \`add_issue_comment\`).
+Si el flujo apunta a un estado o un módulo que ya no existe, avisá en vez de
+elegir uno parecido por tu cuenta.
+
 ## Estilo
 
 Español, prosa profesional y concreta. Nada de "se arregló el bug" ni "ya

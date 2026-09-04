@@ -17,8 +17,11 @@ export function openUrl(url: string) {
 
   const child =
     process.platform === "win32"
-      ? // `start` es interno de cmd; el "" ocupa el hueco del título para que
-        spawn(process.env.ComSpec ?? "cmd.exe", ["/c", "start", "", target], detached)
+      ? spawn(
+          process.env.ComSpec ?? "cmd.exe",
+          ["/d", "/s", "/c", `start "" "${target}"`],
+          { ...detached, windowsVerbatimArguments: true }
+        )
       : process.platform === "darwin"
         ? spawn("open", [target], detached)
         : spawn("xdg-open", [target], detached)

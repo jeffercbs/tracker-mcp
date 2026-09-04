@@ -8,6 +8,7 @@ import { registerAttachmentTools } from "./attachments.js"
 import { registerNoteTools } from "./notes.js"
 import { registerArchitectureTools } from "./architecture.js"
 import { registerSkillTools } from "./skills.js"
+import { registerWorkflowTools } from "./workflows.js"
 
 export function registerAllTools(server: McpServer) {
   registerAuthTools(server)
@@ -18,4 +19,5 @@ export function registerAllTools(server: McpServer) {
   registerNoteTools(server)
   registerArchitectureTools(server)
   registerSkillTools(server)
+  registerWorkflowTools(server)
 }
