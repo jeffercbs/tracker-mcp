@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { getUserClient } from "../auth/supabase-client.js"
 import * as workflows from "../repositories/workflows.js"
+import * as skills from "../repositories/skills.js"
 import {
   listIssueModules,
   listIssueStatuses,
@@ -12,11 +13,12 @@ import {
   parseWorkflowSpec,
   renderWorkflowPrompt,
   renderWorkflowSkill,
+  workflowSkillName,
   workflowSkillPath,
   type WorkflowPromptContext,
 } from "../workflows/prompt.js"
 import { resolveProject } from "./resolve-project.js"
-import { formatArg, mdSection, mdTable, ok, fail } from "./response.js"
+import { formatArg, mdFields, mdSection, mdTable, ok, fail } from "./response.js"
 
 const WorkflowSummarySchema = z.object({
   name: z.string(),
@@ -265,6 +267,105 @@ export function registerWorkflowTools(server: McpServer) {
             mdSection(
               "Skill del flujo",
               `Escribe este contenido en \`${data.path}\` y reinicia la sesión para que se cargue.\n\n\`\`\`markdown\n${data.content}\n\`\`\``,
+              1
+            ),
+        })
+      } catch (err) {
+        return fail(err)
+      }
+    }
+  )
+
+  server.registerTool(
+    "publish_workflow_skill",
+    {
+      title: "Publicar un flujo como skill del proyecto",
+      description:
+        "Guarda el flujo como un skill del proyecto en my-tracker, para que quede compartido con el equipo y se pueda instalar después con install_project_skills. Si ya había un skill de ese flujo, lo reemplaza por la versión actual del diagrama. Es una acción bajo petición: no publiques nada por iniciativa propia.",
+      inputSchema: {
+        workspaceSlug: z.string(),
+        projectKey: z.string(),
+        workflow: z
+          .string()
+          .describe("Identificador del flujo, tal como lo devuelve list_project_workflows"),
+        format: formatArg,
+      },
+      outputSchema: {
+        name: z.string(),
+        title: z.string(),
+        path: z.string(),
+        status: z.string(),
+      },
+    },
+    async ({ workspaceSlug, projectKey, workflow: workflowName, format }) => {
+      try {
+        const { client, userId } = await getUserClient()
+        const { workspace, project } = await resolveProject(client, workspaceSlug, projectKey)
+        const [found] = await workflows.listProjectWorkflows(client, project.id, {
+          names: [workflowName],
+        })
+
+        if (!found) {
+          return fail(new Error(`No se encontró el flujo "${workflowName}" en ${projectKey}`))
+        }
+
+        const spec = parseWorkflowSpec(found.spec)
+        if (!spec) {
+          return fail(new Error(`El flujo "${workflowName}" todavía no tiene un diagrama válido`))
+        }
+
+        const context = await loadContext(
+          client,
+          workspace.slug,
+          project.key,
+          project.id,
+          project.name
+        )
+
+        const prompt = renderWorkflowPrompt(
+          { title: found.title, description: found.description, spec },
+          context
+        )
+
+        const name = workflowSkillName(found.name)
+        const [result] = await skills.importProjectSkills(client, {
+          projectId: project.id,
+          userId,
+          overwrite: true,
+          skills: [
+            {
+              kind: "skill",
+              name,
+              title: found.title,
+              description:
+                found.description.trim() ||
+                `Flujo de trabajo "${found.title}" definido por el equipo en my-tracker.`,
+              content: prompt.trim(),
+              allowedTools: "",
+              model: null,
+              userInvocable: true,
+            },
+          ],
+        })
+
+        const payload = {
+          name,
+          title: found.title,
+          path: workflowSkillPath(found.name),
+          status: result?.status ?? "creado",
+        }
+
+        return ok(payload, {
+          format,
+          markdown: (data) =>
+            mdSection(
+              "Flujo publicado como skill",
+              mdFields([
+                ["Skill", data.name],
+                ["Título", data.title],
+                ["Ruta al instalarlo", data.path],
+                ["Resultado", data.status],
+              ]),
               1
             ),
         })

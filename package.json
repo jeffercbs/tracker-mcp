@@ -1,6 +1,6 @@
 {
   "name": "@jeffercbs/my-tracker-mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP server that lets an AI model access issues, projects and notes in my-tracker on behalf of an authenticated user",
   "author": "Jeferson barrero <jebarrero14@gmail.com>",
   "repository": {

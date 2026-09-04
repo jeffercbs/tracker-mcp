@@ -3,11 +3,22 @@ export const WORKFLOW_PROMPT_VERSION = 1
 export type WorkflowAction =
   | "start"
   | "pick_issues"
+  | "read_context"
+  | "plan"
   | "implement"
+  | "write_tests"
+  | "run_command"
   | "validate_url"
+  | "code_review"
+  | "publish_changes"
   | "comment"
+  | "notify"
+  | "update_fields"
   | "set_status"
+  | "document_note"
+  | "decision"
   | "human_review"
+  | "wait"
   | "custom"
   | "end"
 
@@ -19,6 +30,9 @@ export interface WorkflowNode {
   label: string
   roleId: string | null
   requiresConfirmation: boolean
+  optional?: boolean
+  color?: string | null
+  icon?: string | null
   instructions: string
   position: { x: number; y: number }
   config: Record<string, any>
@@ -64,13 +78,64 @@ export interface WorkflowPromptContext {
 const ACTION_LABEL: Record<WorkflowAction, string> = {
   start: "Inicio",
   pick_issues: "Tomar incidencias",
+  read_context: "Reunir contexto",
+  plan: "Planificar",
   implement: "Implementar",
+  write_tests: "Escribir pruebas",
+  run_command: "Ejecutar un comando",
   validate_url: "Validar en una URL",
+  code_review: "Revisar el cambio",
+  publish_changes: "Publicar cambios",
   comment: "Comentar",
+  notify: "Avisar al equipo",
+  update_fields: "Actualizar la incidencia",
   set_status: "Cambiar de estado",
+  document_note: "Documentar en una nota",
+  decision: "Decisión",
   human_review: "Revisión humana",
+  wait: "Esperar",
   custom: "Paso libre",
   end: "Fin",
+}
+
+const CONTEXT_SOURCE_LABEL: Record<string, string> = {
+  architecture: "Arquitectura del proyecto",
+  notes: "Notas del proyecto",
+  skills: "Skills del proyecto",
+  related_issues: "Incidencias relacionadas",
+  repository: "Código del repositorio",
+}
+
+const PLAN_DELIVERABLE_LABEL: Record<string, string> = {
+  steps: "Lista de pasos",
+  proposal: "Propuesta técnica",
+  estimate: "Estimación de esfuerzo",
+}
+
+const REVIEW_FOCUS_LABEL: Record<string, string> = {
+  correctness: "Que haga lo que dice",
+  regressions: "Regresiones",
+  security: "Seguridad",
+  performance: "Rendimiento",
+  accessibility: "Accesibilidad",
+  style: "Estilo del proyecto",
+  tests: "Cobertura de pruebas",
+}
+
+const COMMIT_STYLE_LABEL: Record<string, string> = {
+  conventional: "Conventional commits",
+  free: "Texto libre",
+}
+
+const NOTIFY_CHANNEL_LABEL: Record<string, string> = {
+  issue_comment: "Comentario en la incidencia",
+  summary: "Resumen al terminar",
+  mention: "Mención a una persona",
+}
+
+const COMMAND_EXPECTATION_LABEL: Record<string, string> = {
+  must_pass: "Tiene que pasar",
+  report: "Solo informar del resultado",
 }
 
 const CONDITION_LABEL: Record<WorkflowEdgeCondition, string> = {
@@ -243,8 +308,170 @@ function stepLines(
     lines.push("- Para aquí y espera respuesta antes de continuar.")
   }
 
+  if (node.action === "read_context") {
+    const sources: string[] = node.config.sources ?? []
+    if (sources.length > 0) {
+      lines.push(`- Lee: ${sources.map((value) => CONTEXT_SOURCE_LABEL[value] ?? value).join(", ")}`)
+    }
+    if (sources.includes("architecture")) {
+      lines.push("- Cómo: `get_project_architecture` sobre este proyecto.")
+    }
+    if (sources.includes("notes")) {
+      lines.push("- Cómo: `list_notes` y `get_note` para las que vengan al caso.")
+    }
+    if (sources.includes("skills")) {
+      lines.push("- Cómo: `list_project_skills` y `get_project_skill`.")
+    }
+    if (sources.includes("related_issues")) {
+      lines.push("- Cómo: `list_issues` buscando incidencias parecidas ya resueltas.")
+    }
+    if (node.config.focus?.trim()) {
+      lines.push(`- Busca sobre todo: ${node.config.focus.trim()}`)
+    }
+    lines.push("- No empieces a cambiar código hasta terminar de leer.")
+  }
+
+  if (node.action === "plan") {
+    const deliverable = node.config.deliverable ?? "steps"
+    lines.push(`- Entrega: ${PLAN_DELIVERABLE_LABEL[deliverable] ?? deliverable}`)
+    if (node.config.notes?.trim()) {
+      lines.push(`- Ten en cuenta: ${node.config.notes.trim()}`)
+    }
+    if (node.config.requireApproval) {
+      lines.push("- **No empieces a implementar hasta que el plan tenga el visto bueno.**")
+    }
+  }
+
+  if (node.action === "write_tests") {
+    if (node.config.framework?.trim()) {
+      lines.push(`- Framework: ${node.config.framework.trim()}`)
+    }
+    if (node.config.target?.trim()) {
+      lines.push(`- Qué hay que cubrir: ${node.config.target.trim()}`)
+    }
+    lines.push(
+      node.config.mustPass !== false
+        ? "- Las pruebas tienen que pasar antes de seguir."
+        : "- Deja escrito el resultado aunque alguna prueba falle."
+    )
+  }
+
+  if (node.action === "run_command") {
+    lines.push(`- Comando: \`${node.config.command?.trim() || MISSING}\``)
+    if (node.config.workingDirectory?.trim()) {
+      lines.push(`- Desde: ${node.config.workingDirectory.trim()}`)
+    }
+    const expectation = node.config.expectation ?? "must_pass"
+    lines.push(`- Resultado: ${COMMAND_EXPECTATION_LABEL[expectation] ?? expectation}`)
+    if (node.config.onFailure?.trim()) {
+      lines.push(`- Si falla: ${node.config.onFailure.trim()}`)
+    }
+  }
+
+  if (node.action === "code_review") {
+    const focus: string[] = node.config.focus ?? []
+    if (focus.length > 0) {
+      lines.push("- Fíjate en:")
+      for (const item of focus) {
+        lines.push(`  - ${REVIEW_FOCUS_LABEL[item] ?? item}`)
+      }
+    }
+    if (node.config.notes?.trim()) {
+      lines.push(`- Además: ${node.config.notes.trim()}`)
+    }
+    lines.push(
+      node.config.blocking !== false
+        ? "- Arregla lo que encuentres antes de continuar."
+        : "- Anota lo que encuentres aunque no lo arregles ahora."
+    )
+  }
+
+  if (node.action === "publish_changes") {
+    if (node.config.branchPattern?.trim()) {
+      lines.push(`- Rama: ${node.config.branchPattern.trim()}`)
+    }
+    const style = node.config.commitStyle ?? "conventional"
+    lines.push(`- Mensajes de commit: ${COMMIT_STYLE_LABEL[style] ?? style}`)
+    if (node.config.openPullRequest) {
+      lines.push("- Abre un pull request con el resumen del cambio y la incidencia que resuelve.")
+    }
+    if (node.config.reviewers?.trim()) {
+      lines.push(`- Revisores: ${node.config.reviewers.trim()}`)
+    }
+    lines.push("- No publiques nada si algún paso anterior quedó en rojo.")
+  }
+
+  if (node.action === "notify") {
+    const channel = node.config.channel ?? "issue_comment"
+    lines.push(`- Canal: ${NOTIFY_CHANNEL_LABEL[channel] ?? channel}`)
+    if (node.config.audience?.trim()) {
+      lines.push(`- Para: ${node.config.audience.trim()}`)
+    }
+    if (node.config.message?.trim()) {
+      lines.push(`- Mensaje: ${node.config.message.trim()}`)
+    }
+    if (channel === "issue_comment") {
+      lines.push("- Cómo: `add_issue_comment`.")
+    }
+  }
+
+  if (node.action === "update_fields") {
+    if (node.config.priority) {
+      lines.push(
+        `- Prioridad: ${PRIORITY_LABEL[node.config.priority] ?? node.config.priority}`
+      )
+    }
+    if (node.config.moduleId) {
+      const module = context.modules.find((item) => item.id === node.config.moduleId)
+      lines.push(`- Módulo: "${module?.name ?? MISSING}"`)
+    }
+    const added = resolveNames(node.config.addLabelIds, context.labels)
+    if (added.length > 0) {
+      lines.push(`- Añade las etiquetas: ${quoted(added)}`)
+    }
+    const removed = resolveNames(node.config.removeLabelIds, context.labels)
+    if (removed.length > 0) {
+      lines.push(`- Quita las etiquetas: ${quoted(removed)}`)
+    }
+    lines.push("- Cómo: `update_issue` con esos campos; no toques los demás.")
+  }
+
+  if (node.action === "document_note") {
+    lines.push(`- Título de la nota: "${node.config.title?.trim() || MISSING}"`)
+    if (node.config.outline?.trim()) {
+      lines.push(`- Qué tiene que contar: ${node.config.outline.trim()}`)
+    }
+    lines.push(
+      "- Cómo: `create_note` si el equipo la pidió en este paso; si ya existe una nota para esto, actualízala con `update_note` en vez de crear otra."
+    )
+  }
+
+  if (node.action === "decision") {
+    lines.push(`- Decide: ${node.config.question?.trim() || MISSING}`)
+    const options: string[] = node.config.options ?? []
+    if (options.length > 0) {
+      lines.push("- Opciones:")
+      for (const option of options) {
+        lines.push(`  - ${option}`)
+      }
+    }
+    lines.push("- Di en voz alta por qué camino tiras y por qué antes de seguir.")
+  }
+
+  if (node.action === "wait") {
+    lines.push(`- Espera a: ${node.config.until?.trim() || MISSING}`)
+    if (node.config.maxWait?.trim()) {
+      lines.push(`- Como mucho: ${node.config.maxWait.trim()}`)
+    }
+    lines.push("- No sigas por tu cuenta si eso no llega: dilo y para.")
+  }
+
   if (node.instructions?.trim()) {
     lines.push(`- Además: ${node.instructions.trim()}`)
+  }
+
+  if (node.optional) {
+    lines.push("- Este paso es opcional: sáltalo si no aplica, pero di que lo saltaste y por qué.")
   }
 
   if (node.requiresConfirmation && node.action !== "human_review") {
@@ -382,8 +609,12 @@ export function renderWorkflowPrompt(
   return `${lines.join("\n")}\n`
 }
 
+export function workflowSkillName(name: string) {
+  return `flujo-${name}`.slice(0, 64).replace(/-+$/, "")
+}
+
 export function workflowSkillPath(name: string, root = ".claude") {
-  return `${root}/skills/flujo-${name}/SKILL.md`
+  return `${root}/skills/${workflowSkillName(name)}/SKILL.md`
 }
 
 export function renderWorkflowSkill(
@@ -396,7 +627,7 @@ export function renderWorkflowSkill(
 
   return [
     "---",
-    `name: flujo-${workflow.name}`,
+    `name: ${workflowSkillName(workflow.name)}`,
     `description: ${JSON.stringify(description)}`,
     "---",
     "",
