@@ -9,6 +9,7 @@ import { registerNoteTools } from "./notes.js"
 import { registerArchitectureTools } from "./architecture.js"
 import { registerSkillTools } from "./skills.js"
 import { registerWorkflowTools } from "./workflows.js"
+import { registerBoardTools } from "./boards.js"
 
 export function registerAllTools(server: McpServer) {
   registerAuthTools(server)
@@ -20,4 +21,5 @@ export function registerAllTools(server: McpServer) {
   registerArchitectureTools(server)
   registerSkillTools(server)
   registerWorkflowTools(server)
+  registerBoardTools(server)
 }

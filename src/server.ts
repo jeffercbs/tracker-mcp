@@ -146,6 +146,29 @@ las tools de siempre (\`list_issues\`, \`update_issue\`, \`add_issue_comment\`).
 Si el flujo apunta a un estado o un módulo que ya no existe, avisá en vez de
 elegir uno parecido por tu cuenta.
 
+## Tableros de seguimiento
+
+Un tablero reparte las incidencias de un proyecto o subproyecto en etapas para
+seguir un desarrollo. Hay tres tipos y cada uno tiene su propio vocabulario:
+**sprint** (iteraciones cortas), **cascada** (fases encadenadas) y
+**cronograma** (rejilla de iteraciones por periodo, con tramos de trabajo
+principal, trabajo solapado y dependencia de terceros).
+
+- \`list_boards\` y \`get_board\` — antes de mover nada, mirá qué planificó el
+  equipo: qué sprint está en curso, qué fase toca y qué incidencias tiene ya.
+  Es la respuesta a "¿en qué voy a trabajar?" cuando no te lo concretan.
+- \`set_board_issues\` — coloca o mueve incidencias entre etapas del tablero.
+  Mover una incidencia dentro del tablero no cambia su estado: eso sigue siendo
+  \`update_issue\`.
+- \`update_board_stage\` — refleja el avance real de un sprint o una fase
+  (por ejemplo marcarla como terminada) cuando te lo pidan.
+- \`create_board\`, \`add_board_stage\` y \`set_timeline_segment\` — crean o
+  amplían planificación, así que valen la Regla 1: solo bajo petición expresa.
+  No inventes sprints, fases ni tramos porque te parezca que faltan.
+
+Un tablero no reemplaza al estado de la incidencia ni al flujo de trabajo: dice
+cuándo se hace cada cosa, no cómo.
+
 ## Estilo
 
 Español, prosa profesional y concreta. Nada de "se arregló el bug" ni "ya

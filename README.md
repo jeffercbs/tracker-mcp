@@ -234,10 +234,15 @@ nombres.
 - `list_project_skills` / `get_project_skill` — los skills y subagentes que el equipo escribió para un proyecto en my-tracker.
 - `install_project_skills` — devuelve esos ficheros con su ruta y su contenido, listos para escribirlos en el repositorio.
 - `import_project_skills` — el camino inverso: sube a my-tracker los skills que ya viven en el repositorio.
+- `list_boards` / `get_board` — los tableros de seguimiento de un proyecto o subproyecto (sprints, cascada y cronogramas de iteraciones) con sus etapas, fechas e incidencias.
+- `create_board` / `add_board_stage` / `update_board_stage` — crear un tablero con sus etapas iniciales, ampliarlo y reflejar el avance de cada sprint o fase.
+- `set_board_issues` — colocar, mover o sacar incidencias de una etapa del tablero.
+- `set_timeline_segment` — pintar en un cronograma en qué periodos cae el trabajo principal, el solapado y las dependencias de terceros.
 
 Todas las tools que **crean** algo (`create_issue`, `create_project`,
 `create_issue_type`, `create_issue_status`, `create_issue_module`,
-`create_note`, `add_issue_comment`, `add_issue_attachment`) son tools **bajo
+`create_note`, `add_issue_comment`, `add_issue_attachment`, `create_board`,
+`add_board_stage`) son tools **bajo
 petición**: las instrucciones del servidor y la descripción de cada tool le
 dicen al modelo que no cree nada por iniciativa propia, solo cuando la persona
 usuaria lo pide de forma explícita. Si el modelo cree que hace falta una
@@ -434,6 +439,29 @@ La `category` de un estado (`backlog`, `todo`, `in_progress`, `done`,
 `cancelled`) es lo que le da su significado: las incidencias en un estado de
 categoría `done` cuentan como cerradas, y `update_issue` exige documentación
 antes de moverlas ahí.
+
+### Tableros de seguimiento
+
+Un tablero reparte las incidencias en etapas para seguir un desarrollo. Existe
+en tres formas, y `get_board` devuelve la que corresponda:
+
+| Tipo | Etapas | Para qué |
+| --- | --- | --- |
+| `sprint` | Sprints con fecha de inicio y fin | Iterar en ciclos cortos; el tablero de la aplicación reparte las incidencias por estado |
+| `waterfall` | Fases encadenadas | Seguir un desarrollo de principio a fin, midiendo el avance por incidencias cerradas |
+| `timeline` | Iteraciones sobre una rejilla de periodos | Cronograma: qué iteración ocupa qué semanas, con trabajo principal, solapado y dependencias de terceros |
+
+Un tablero cuelga del proyecto o de un subproyecto (`subproject` en
+`list_boards` y `create_board`). Las etapas y los tableros se referencian por
+nombre o por su identificador, igual que el resto de referencias del MCP.
+
+En un cronograma, `set_timeline_segment` marca un tramo de una iteración:
+`from`/`to` son números de periodo empezando en 1, y `kind` es `main`,
+`overlap` o `dependency`. Pintar sobre un rango ya ocupado lo reemplaza, y
+`clear: true` lo borra. `get_board` devuelve la rejilla dibujada en texto.
+
+Mover una incidencia dentro de un tablero no cambia su estado: para eso sigue
+estando `update_issue`.
 
 ### Formato de la respuesta
 
