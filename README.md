@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/jeffercbs/tracker-mcp/main/media/logo.svg" alt="" width="72" height="72">
+
 # tracker-mcp
 
 Servidor MCP (Model Context Protocol) que le da a un modelo acceso a **my-tracker**
