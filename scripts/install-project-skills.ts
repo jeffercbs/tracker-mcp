@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 
 function usage(): string {
   return [
-    "Uso: my-tracker-mcp-skills <workspaceSlug> <PROJECT_KEY> [opciones]",
+    "Uso: tracker-mcp-skills <workspaceSlug> <PROJECT_KEY> [opciones]",
     "",
     "Escribe en este repositorio los skills y subagentes activos que el equipo",
     "definió en my-tracker para ese proyecto.",

@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import { join } from "node:path"
+
+import { CONFIG_DIR, migrateLegacyConfigDir } from "./paths.js"
 
 export interface LocalConfig {
   supabaseUrl: string
@@ -8,16 +9,18 @@ export interface LocalConfig {
   webUrl: string
 }
 
-const CONFIG_DIR = join(homedir(), ".my-tracker-mcp")
 const CONFIG_FILE = join(CONFIG_DIR, "config.json")
+
+export const LEGACY_WEB_URL_ENV = "MY_TRACKER_WEB_URL"
 
 export const ENV_KEYS = {
   supabaseUrl: "NEXT_PUBLIC_SUPABASE_URL",
   supabaseAnonKey: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  webUrl: "MY_TRACKER_WEB_URL",
+  webUrl: "TRACKER_WEB_URL",
 } as const
 
 export function loadLocalConfig(): Partial<LocalConfig> {
+  migrateLegacyConfigDir()
   if (!existsSync(CONFIG_FILE)) {
     return {}
   }
@@ -38,6 +41,7 @@ export function loadLocalConfig(): Partial<LocalConfig> {
 }
 
 export function saveLocalConfig(config: LocalConfig) {
+  migrateLegacyConfigDir()
   if (!existsSync(CONFIG_DIR)) {
     mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
   }

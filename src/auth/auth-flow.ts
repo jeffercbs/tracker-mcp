@@ -10,7 +10,7 @@ const LOGIN_TIMEOUT_MS = 5 * 60 * 1000
 const ALLOWED_CALLBACK_HOSTS = new Set(["127.0.0.1", "localhost"])
 
 const SUCCESS_HTML = `<!doctype html><html><head><meta charset="utf-8"></head><body style="font-family: sans-serif; text-align:center; padding-top: 4rem;">
-<h2>my-tracker-mcp autorizado</h2>
+<h2>tracker-mcp autorizado</h2>
 <p>Ya podés cerrar esta pestaña y volver a tu cliente MCP.</p>
 </body></html>`
 
@@ -33,7 +33,7 @@ function escapeHtml(value: string) {
 
 function errorHtml(message: string) {
   return `<!doctype html><html><head><meta charset="utf-8"></head><body style="font-family: sans-serif; text-align:center; padding-top: 4rem;">
-<h2>No se pudo autorizar my-tracker-mcp</h2>
+<h2>No se pudo autorizar tracker-mcp</h2>
 <p>${escapeHtml(message)}</p>
 </body></html>`
 }

@@ -2,7 +2,7 @@
 import { performBrowserLogin } from "../src/auth/auth-flow.js"
 
 async function main() {
-  console.log("Abriendo el navegador para autorizar my-tracker-mcp...")
+  console.log("Abriendo el navegador para autorizar tracker-mcp...")
 
   const result = await performBrowserLogin({
     onAuthorizeUrl: (url) => console.log(`Si no se abre solo, entrá a: ${url}`),

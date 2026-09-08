@@ -2,8 +2,24 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-export const SERVER_NAME = "my-tracker"
-export const SERVER_PACKAGE = process.env.MY_TRACKER_MCP_PACKAGE?.trim() || "@jeffercbs/my-tracker-mcp"
+export const SERVER_NAME = "tracker"
+const DEFAULT_PACKAGE = "@jeffercbs/tracker-mcp"
+const PACKAGE_NAME_PATTERN = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(@[a-zA-Z0-9.^~><=+-]+)?$/
+
+function resolveServerPackage(): string {
+  const fromEnv = process.env.TRACKER_MCP_PACKAGE?.trim() || process.env.MY_TRACKER_MCP_PACKAGE?.trim()
+  if (!fromEnv) {
+    return DEFAULT_PACKAGE
+  }
+  if (!PACKAGE_NAME_PATTERN.test(fromEnv)) {
+    throw new Error(
+      `TRACKER_MCP_PACKAGE no contiene un nombre de paquete npm válido: "${fromEnv}"`
+    )
+  }
+  return fromEnv
+}
+
+export const SERVER_PACKAGE = resolveServerPackage()
 export const PROJECT_CONFIG_FILE = ".mcp.json"
 
 export type RegistrationScope = "project" | "user"

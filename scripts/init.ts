@@ -8,7 +8,7 @@ import { registerMcpServer, type RegistrationScope } from "../src/setup/register
 
 function usage(): string {
   return [
-    "Uso: my-tracker-mcp-init <workspaceSlug> <PROJECT_KEY> [opciones]",
+    "Uso: tracker-mcp-init <workspaceSlug> <PROJECT_KEY> [opciones]",
     "",
     "Deja este repositorio listo de una vez: registra el servidor MCP, inicia",
     "sesión si hace falta e instala el skill de arquitectura del proyecto.",
@@ -90,12 +90,12 @@ async function ensureSession(skipLogin: boolean): Promise<string> {
 
   if (skipLogin) {
     throw new Error(
-      "No hay sesión de my-tracker y se pidió --skip-login. Corré `my-tracker-mcp-login` antes."
+      "No hay sesión de my-tracker y se pidió --skip-login. Corré `tracker-mcp-login` antes."
     )
   }
 
   const { performBrowserLogin } = await import("../src/auth/auth-flow.js")
-  console.log("Abriendo el navegador para autorizar my-tracker-mcp...")
+  console.log("Abriendo el navegador para autorizar tracker-mcp...")
   const result = await performBrowserLogin({
     onAuthorizeUrl: (url) => console.log(`   Si no se abre solo, entrá a: ${url}`),
   })

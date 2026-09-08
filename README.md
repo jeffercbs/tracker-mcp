@@ -1,4 +1,4 @@
-# my-tracker-mcp
+# tracker-mcp
 
 Servidor MCP (Model Context Protocol) que le da a un modelo acceso a **my-tracker**
 —issues, proyectos y notas— actuando como el usuario que inició sesión, respetando
@@ -16,7 +16,7 @@ iniciada ahí (o pidiéndote que inicies sesión si no la tenés):
 1. Corrés `npm run login`. Esto abre tu navegador en
    `https://<tu-sitio>/mcp/authorize?state=...&port=...`.
 2. Si ya tenés sesión iniciada en el sitio, ves directamente una pantalla de
-   "Autorizar my-tracker-mcp"; si no, el sitio te manda primero a su `/login`
+   "Autorizar tracker-mcp"; si no, el sitio te manda primero a su `/login`
    normal (con email/password) y después te trae de vuelta a esa pantalla.
 3. Al apretar "Autorizar", el sitio genera un código de un solo uso (válido ~2
    minutos) y redirige tu navegador a `http://127.0.0.1:<puerto>/callback`,
@@ -26,7 +26,7 @@ iniciada ahí (o pidiéndote que inicies sesión si no la tenés):
    usuario. El código de un solo uso nunca expone el token en la URL/historial
    del navegador — solo viaja el código, y el intercambio pasa por una
    petición HTTP directa entre el CLI y el servidor.
-5. Esos tokens se guardan en `~/.my-tracker-mcp/session.json` (permisos
+5. Esos tokens se guardan en `~/.tracker-mcp/session.json` (permisos
    `0600`). De ahí en más, cada tool del MCP arma un cliente de Supabase con
    tu JWT (refrescándolo cuando expira) y consulta la base directo: como es tu
    JWT real, las RLS policies (`is_workspace_member`, `workspace_role`, etc.)
@@ -39,7 +39,7 @@ en el formulario de login normal del sitio, dentro del navegador.
 ### Qué se agregó al repo de `my-tracker`
 
 - `app/mcp/authorize/page.tsx` — pantalla de consentimiento ("¿autorizás a
-  my-tracker-mcp a acceder a tu cuenta?").
+  tracker-mcp a acceder a tu cuenta?").
 - `lib/actions/mcp.ts` — genera el código de un solo uso y redirige al
   `127.0.0.1:<puerto>` del CLI.
 - `lib/db/mcp-auth.ts` + tabla `mcp_auth_codes`
@@ -53,32 +53,32 @@ en el formulario de login normal del sitio, dentro del navegador.
 
 ## Instalación para el equipo (sin clonar el repo)
 
-El paquete se publica **privado en GitHub Packages** como
-`@jeffercbs/my-tracker-mcp`. Antes de instalar nada, cada máquina necesita
-apuntar ese scope al registro de GitHub y autenticarse con un token que tenga
-`read:packages`, en su `~/.npmrc`:
+El paquete se publica **público en GitHub Packages** como
+`@jeffercbs/tracker-mcp`. Aunque sea público, GitHub Packages no se resuelve
+desde el registro por defecto de npm, así que cada máquina necesita apuntar el
+scope al registro de GitHub en su `~/.npmrc`:
 
 ```
 @jeffercbs:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=<token con read:packages>
 ```
 
 Es un paso por máquina, no por repositorio. Sin él, cualquier `npx` de abajo
-falla con un 401 o un 404 del registro.
+falla con un 404 del registro. Al ser público ya no hace falta un token de
+`read:packages` para instalarlo.
 
 Registrá el servidor directo en Claude Code (o el cliente MCP que uses),
-apuntando a `npx @jeffercbs/my-tracker-mcp` en vez de una ruta local:
+apuntando a `npx @jeffercbs/tracker-mcp` en vez de una ruta local:
 
 ```bash
-claude mcp add my-tracker -s user -- npx -y @jeffercbs/my-tracker-mcp
+claude mcp add tracker -s user -- npx -y @jeffercbs/tracker-mcp
 ```
 
 No hace falta pasarle ninguna variable. El servidor pide la configuración
 pública de my-tracker (`GET /api/mcp/config`: la URL de Supabase y la anon key,
 las mismas que ya sirve el frontend a cualquier navegador) y la cachea en
-`~/.my-tracker-mcp/config.json`. Lo único sensible, tu sesión, vive aparte y
+`~/.tracker-mcp/config.json`. Lo único sensible, tu sesión, vive aparte y
 solo se obtiene por navegador. Para apuntar a otra instancia, las variables
-`MY_TRACKER_WEB_URL`, `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+`TRACKER_WEB_URL`, `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 siguen teniendo prioridad.
 
 El paquete se publica ya compilado (solo `dist/`), así que `npx` lo descarga y
@@ -88,9 +88,9 @@ corridas siguientes usan la copia cacheada por `npx`.
 Para autenticarte (una vez, o para cambiar de usuario), sin clonar nada:
 
 ```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-login
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-whoami   # opcional, confirma el usuario
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-logout  # para cerrar sesión
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-login
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-whoami   # opcional, confirma el usuario
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-logout  # para cerrar sesión
 ```
 
 ### Un solo comando por repositorio
@@ -99,12 +99,12 @@ Para dejar un repositorio listo de una vez —servidor MCP registrado, sesión
 iniciada y skill de arquitectura instalado— parado en su raíz:
 
 ```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-init <workspaceSlug> <PROJECT_KEY>
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-init <workspaceSlug> <PROJECT_KEY>
 ```
 
 Hace tres cosas, todas repetibles sin romper nada:
 
-1. **Sesión** — reutiliza la que haya en `~/.my-tracker-mcp/session.json`; si no hay, abre el navegador para autorizar.
+1. **Sesión** — reutiliza la que haya en `~/.tracker-mcp/session.json`; si no hay, abre el navegador para autorizar.
 2. **Servidor MCP** — escribe la entrada `my-tracker` en el `.mcp.json` del repositorio, respetando los otros servidores que ya estén ahí. Con `--scope user` lo registra en tu configuración de usuario vía `claude mcp add` en vez de en el repositorio.
 3. **Skill** — escribe `.claude/skills/tracker-architecture/SKILL.md` apuntando a ese proyecto.
 
@@ -119,7 +119,7 @@ autenticarse una vez.
 Si solo querés (re)instalar el skill, sin tocar el registro del servidor:
 
 ```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-skill <workspaceSlug> <PROJECT_KEY>
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-skill <workspaceSlug> <PROJECT_KEY>
 ```
 
 (También podés pedirle a Claude que corra la tool `login` directamente desde
@@ -127,17 +127,17 @@ el chat — ver "Tools expuestas" más abajo.)
 
 ## Publicación del paquete
 
-Se publica en GitHub Packages, privado, bajo el scope `@jeffercbs`. En
+Se publica en GitHub Packages, público, bajo el scope `@jeffercbs`. En
 `package.json` el destino está fijado con `publishConfig`, así que un `npm
 publish` no puede acabar por accidente en el registro público de npm.
 
 ```bash
 npm version patch          # o minor / major
-npm publish                # usa publishConfig: npm.pkg.github.com, access restricted
+npm publish                # usa publishConfig: npm.pkg.github.com, access public
 ```
 
-Para publicar hace falta un token con `write:packages` en tu `~/.npmrc`
-(el de `read:packages` de arriba solo permite instalar).
+Para publicar hace falta un token con `write:packages` en tu `~/.npmrc`;
+instalar no requiere ninguno.
 
 Qué viaja en el tarball: solo `dist/`, `package.json` y este README — la lista
 está fijada con el campo `files`, así que ni `.env`, ni `src/`, ni la
@@ -154,8 +154,8 @@ desfasado respecto al código.
 ## Instalación en desarrollo (clonando el repo)
 
 ```bash
-git clone https://github.com/jeffercbs/my-tracker-mcp.git
-cd my-tracker-mcp
+git clone https://github.com/jeffercbs/tracker-mcp.git
+cd tracker-mcp
 npm install
 cp .env.example .env
 ```
@@ -165,7 +165,7 @@ Completá `.env`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=...       # igual que en my-tracker/.env.local
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...  # igual que en my-tracker/.env.local (es pública, no secreta)
-MY_TRACKER_WEB_URL=https://tracker.jeffercbs.com  # o http://localhost:3000 en dev
+TRACKER_WEB_URL=https://tracker.jeffercbs.com  # o http://localhost:3000 en dev
 ```
 
 ```bash
@@ -177,9 +177,9 @@ npm run build
 ```json
 {
   "mcpServers": {
-    "my-tracker": {
+    "tracker": {
       "command": "node",
-      "args": ["C:/Users/jeffe/source/repos/my-tracker-mcp/dist/src/index.js"]
+      "args": ["<ruta al repo>/tracker-mcp/dist/src/index.js"]
     }
   }
 }
@@ -264,8 +264,8 @@ Cada repositorio que publica su arquitectura lleva un skill propio,
 instala con un comando, parado en la raíz del repositorio:
 
 ```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-init acme WEB
-# solo el skill: my-tracker-mcp-skill acme WEB
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-init acme WEB
+# solo el skill: tracker-mcp-skill acme WEB
 # con el repo clonado: npm run init -- acme WEB
 ```
 
@@ -318,7 +318,7 @@ El flujo va en las dos direcciones:
   ficheros con su ruta y su contenido, y el agente los escribe. Desde la terminal:
 
 ```bash
-npx -y --package=@jeffercbs/my-tracker-mcp my-tracker-mcp-skills acme WEB
+npx -y --package=@jeffercbs/tracker-mcp tracker-mcp-skills acme WEB
 ```
 
 Opciones: `--dir` para otro repositorio, `--root .agents` para clientes que leen
@@ -517,7 +517,7 @@ estructurado.
   de error que se pinta en la página local va escapado.
 - La URL de autorización se abre pasándola como argumento del proceso, nunca
   interpolada en una línea de comandos, y solo si es `http`/`https`.
-- `NEXT_PUBLIC_SUPABASE_URL` y `MY_TRACKER_WEB_URL` deben ser `https://` (se
+- `NEXT_PUBLIC_SUPABASE_URL` y `TRACKER_WEB_URL` deben ser `https://` (se
   admite `http://` solo en localhost), para no mandar el token en claro.
 - La sesión guardada se valida al leerla y el fichero se fuerza a permisos
   `0600`; si el refresh token deja de servir, se borra en vez de reintentar.
@@ -526,7 +526,7 @@ estructurado.
   leer el archivo y limpia el nombre para que no pueda escaparse de la carpeta
   del proyecto en el bucket.
 - Un solo usuario por sesión guardada: si varias personas usan esta máquina,
-  cada una debería tener su propia carpeta `~/.my-tracker-mcp` (o correr el
+  cada una debería tener su propia carpeta `~/.tracker-mcp` (o correr el
   servidor con `HOME` distinto).
 - Todo el control de acceso a los datos vive en las policies RLS de
   `supabase/migrations` del repo `my-tracker`; este servidor no agrega ni

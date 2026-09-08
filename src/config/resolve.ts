@@ -1,12 +1,18 @@
 import "dotenv/config"
 
-import { ENV_KEYS, loadLocalConfig, saveLocalConfig, type LocalConfig } from "./local-config.js"
+import {
+  ENV_KEYS,
+  LEGACY_WEB_URL_ENV,
+  loadLocalConfig,
+  saveLocalConfig,
+  type LocalConfig,
+} from "./local-config.js"
 import { DEFAULT_WEB_URL } from "./defaults.js"
 
 const CONFIG_TIMEOUT_MS = 10_000
 
 export function resolveWebUrl(): string {
-  const fromEnv = process.env[ENV_KEYS.webUrl]?.trim()
+  const fromEnv = process.env[ENV_KEYS.webUrl]?.trim() || process.env[LEGACY_WEB_URL_ENV]?.trim()
   if (fromEnv) {
     return fromEnv.replace(/\/$/, "")
   }

@@ -5,11 +5,11 @@ import { SKILL_DIRECTORY, SKILL_FILENAME } from "../src/skill/architecture-skill
 
 function usage(): string {
   return [
-    "Uso: my-tracker-mcp-skill <workspaceSlug> <PROJECT_KEY> [opciones]",
+    "Uso: tracker-mcp-skill <workspaceSlug> <PROJECT_KEY> [opciones]",
     "",
     "Escribe el skill de arquitectura del proyecto en este repositorio",
     `(${SKILL_DIRECTORY}/${SKILL_FILENAME}). Para dejar además registrado el`,
-    "servidor MCP y la sesión, usá `my-tracker-mcp-init`.",
+    "servidor MCP y la sesión, usá `tracker-mcp-init`.",
     "",
     "  --dir <ruta>   Raíz del repositorio (por defecto, el directorio actual)",
     "  --force        Sobrescribe el skill si ya existe",
@@ -76,7 +76,7 @@ async function main() {
     workspaceSlug: options.workspaceSlug,
     projectKey: options.projectKey,
     directory: options.dir,
-    webUrl: process.env.MY_TRACKER_WEB_URL?.trim() || null,
+    webUrl: process.env.TRACKER_WEB_URL?.trim() || process.env.MY_TRACKER_WEB_URL?.trim() || null,
     force: options.force,
     dryRun: options.print,
   })

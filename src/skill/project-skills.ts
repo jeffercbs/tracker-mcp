@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, isAbsolute, relative, resolve } from "node:path"
 
 import type { ProjectSkillDTO } from "../repositories/skills.js"
+import { assertSkillName } from "./skill-name.js"
 
 export interface SkillFile {
   name: string
@@ -17,6 +18,7 @@ export interface SkillWriteResult extends SkillFile {
 }
 
 export function skillFilePath(skill: ProjectSkillDTO, root = ".claude"): string {
+  assertSkillName(skill.name)
   return skill.kind === "agent"
     ? `${root}/agents/${skill.name}.md`
     : `${root}/skills/${skill.name}/SKILL.md`
@@ -28,7 +30,7 @@ function frontmatterValue(value: string): string {
 }
 
 export function renderSkillMarkdown(skill: ProjectSkillDTO): string {
-  const lines = ["---", `name: ${skill.name}`]
+  const lines = ["---", `name: ${frontmatterValue(assertSkillName(skill.name))}`]
 
   if (skill.description.trim()) {
     lines.push(`description: ${frontmatterValue(skill.description)}`)
@@ -70,8 +72,15 @@ export function writeSkillFiles(
   directory: string,
   force = false
 ): SkillWriteResult[] {
+  const root = resolve(directory)
+
   return files.map((file) => {
-    const absolute = join(directory, ...file.path.split("/"))
+    assertSkillName(file.name)
+    const absolute = resolve(root, ...file.path.split("/"))
+    const inside = relative(root, absolute)
+    if (inside.startsWith("..") || isAbsolute(inside)) {
+      throw new Error(`La ruta del skill "${file.name}" se sale del directorio de destino`)
+    }
 
     if (existsSync(absolute)) {
       const current = readFileSync(absolute, "utf8")

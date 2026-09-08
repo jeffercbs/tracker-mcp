@@ -1,3 +1,5 @@
+import { isValidSkillName } from "./skill-name.js"
+
 export interface ParsedSkillFile {
   kind: "skill" | "agent"
   name: string
@@ -78,7 +80,7 @@ export function parseSkillFile(input: { path: string; content: string }): Parsed
   const kind = fields.kind === "agent" ? "agent" : kindFromPath(input.path)
   const name = (fields.name || nameFromPath(input.path)).trim().toLowerCase()
 
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
+  if (!isValidSkillName(name)) {
     throw new Error(
       `No se pudo deducir un nombre válido para "${input.path}". Añadí \`name:\` en el frontmatter, en minúsculas con guiones`
     )

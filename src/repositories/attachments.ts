@@ -57,15 +57,34 @@ const BLOCKED_FILENAMES = [
   /^\.netrc$/i,
   /^credentials$/i,
   /^\.git-credentials$/i,
+  /^.*\.env$/i,
+  /^\.pgpass$/i,
+  /^\.dockercfg$/i,
+  /^session\.json$/i,
+  /^.*\.tfvars$/i,
+  /^known_hosts$/i,
 ]
 
 const BLOCKED_EXTENSIONS = new Set(["pem", "key", "p12", "pfx", "keystore", "jks", "ppk"])
 
+const BLOCKED_DIRECTORIES = [
+  /(^|\/)\.ssh\//i,
+  /(^|\/)\.aws\//i,
+  /(^|\/)\.gnupg\//i,
+  /(^|\/)\.my-tracker-mcp\//i,
+  /(^|\/)\.tracker-mcp\//i,
+]
+
 function assertUploadAllowed(originalName: string) {
+  const normalized = originalName.replace(/\\/g, "/")
   const base = originalName.trim().split(/[\\/]/).pop() ?? ""
   const extension = base.includes(".") ? base.split(".").pop()!.toLowerCase() : ""
 
-  if (BLOCKED_FILENAMES.some((pattern) => pattern.test(base)) || BLOCKED_EXTENSIONS.has(extension)) {
+  if (
+    BLOCKED_FILENAMES.some((pattern) => pattern.test(base)) ||
+    BLOCKED_EXTENSIONS.has(extension) ||
+    BLOCKED_DIRECTORIES.some((pattern) => pattern.test(normalized))
+  ) {
     throw new Error(
       `"${base}" parece un fichero de credenciales o de configuración sensible, así que no se sube. Adjunta solo evidencia (capturas, registros ya depurados, documentos).`
     )

@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import { join } from "node:path"
+
+import { CONFIG_DIR, migrateLegacyConfigDir } from "../config/paths.js"
 
 export interface StoredSession {
   accessToken: string
@@ -10,7 +11,6 @@ export interface StoredSession {
   email: string
 }
 
-const CONFIG_DIR = join(homedir(), ".my-tracker-mcp")
 const SESSION_FILE = join(CONFIG_DIR, "session.json")
 
 function parseSession(raw: string): StoredSession | null {
@@ -48,6 +48,7 @@ function parseSession(raw: string): StoredSession | null {
 }
 
 export function loadSession(): StoredSession | null {
+  migrateLegacyConfigDir()
   if (!existsSync(SESSION_FILE)) {
     return null
   }
@@ -59,6 +60,7 @@ export function loadSession(): StoredSession | null {
 }
 
 export function saveSession(session: StoredSession) {
+  migrateLegacyConfigDir()
   if (!existsSync(CONFIG_DIR)) {
     mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
   }
@@ -70,6 +72,7 @@ export function saveSession(session: StoredSession) {
 }
 
 export function clearSession() {
+  migrateLegacyConfigDir()
   if (existsSync(SESSION_FILE)) {
     rmSync(SESSION_FILE)
   }

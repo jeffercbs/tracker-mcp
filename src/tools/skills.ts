@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 
 import { getUserClient } from "../auth/supabase-client.js"
+import { SKILL_NAME_PATTERN } from "../skill/skill-name.js"
 import * as skills from "../repositories/skills.js"
 import { renderSkillMarkdown, skillFilePath, toSkillFiles } from "../skill/project-skills.js"
 import { parseSkillFile } from "../skill/parse-skill.js"
@@ -103,7 +104,10 @@ export function registerSkillTools(server: McpServer) {
       inputSchema: {
         workspaceSlug: z.string(),
         projectKey: z.string(),
-        name: z.string().describe("Nombre técnico del skill, por ejemplo 'revision-de-prs'"),
+        name: z
+          .string()
+          .regex(SKILL_NAME_PATTERN)
+          .describe("Nombre técnico del skill, por ejemplo 'revision-de-prs'"),
         format: formatArg,
       },
       outputSchema: { skill: SkillFileSchema },
@@ -220,11 +224,12 @@ export function registerSkillTools(server: McpServer) {
         workspaceSlug: z.string(),
         projectKey: z.string(),
         names: z
-          .array(z.string())
+          .array(z.string().regex(SKILL_NAME_PATTERN))
           .optional()
           .describe("Solo estos skills, por su nombre técnico. Si se omite, todos los activos"),
         root: z
           .string()
+          .regex(/^\.?[a-z0-9][a-z0-9-]*$/)
           .optional()
           .describe(
             "Carpeta raíz de destino. Por defecto '.claude'; usa '.agents' para clientes que leen esa convención"

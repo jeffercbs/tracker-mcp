@@ -185,7 +185,7 @@ los pides con \`include\`.
 
 export function createTrackerMcpServer(): McpServer {
   const server = new McpServer(
-    { name: "my-tracker-mcp", version: "0.1.0" },
+    { name: "tracker-mcp", version: "0.1.0" },
     { instructions: INSTRUCTIONS }
   )
   registerAllTools(server)
