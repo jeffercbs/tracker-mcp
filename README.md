@@ -28,8 +28,10 @@ iniciada ahí (o pidiéndote que inicies sesión si no la tenés):
    usuario. El código de un solo uso nunca expone el token en la URL/historial
    del navegador — solo viaja el código, y el intercambio pasa por una
    petición HTTP directa entre el CLI y el servidor.
-5. Esos tokens se guardan en `~/.tracker-mcp/session.json` (permisos
-   `0600`). De ahí en más, cada tool del MCP arma un cliente de Supabase con
+5. Esos tokens se guardan cifrados en `~/.tracker-mcp/session.json`
+   (permisos `0600`): el archivo solo contiene un sobre AES-256-GCM cuya clave
+   se deriva con scrypt de datos de la máquina y del usuario, así que copiarlo
+   a otro equipo o a otra cuenta no sirve de nada. De ahí en más, cada tool del MCP arma un cliente de Supabase con
    tu JWT (refrescándolo cuando expira) y consulta la base directo: como es tu
    JWT real, las RLS policies (`is_workspace_member`, `workspace_role`, etc.)
    se aplican igual que en la app — solo ves/creás lo que tu usuario puede ver
@@ -77,9 +79,12 @@ claude mcp add tracker -s user -- npx -y @jeffercbs/tracker-mcp
 
 No hace falta pasarle ninguna variable. El servidor pide la configuración
 pública de my-tracker (`GET /api/mcp/config`: la URL de Supabase y la anon key,
-las mismas que ya sirve el frontend a cualquier navegador) y la cachea en
-`~/.tracker-mcp/config.json`. Lo único sensible, tu sesión, vive aparte y
-solo se obtiene por navegador. Para apuntar a otra instancia, las variables
+las mismas que ya sirve el frontend a cualquier navegador) y la cachea cifrada
+en `~/.tracker-mcp/config.json`, con el mismo sobre AES-256-GCM que la sesión.
+Lo único sensible, tu sesión, vive aparte y solo se obtiene por navegador.
+Si querés atar el cifrado a algo que solo vos sepas, definí `TRACKER_MCP_SECRET`
+en el entorno: esa frase entra en la derivación de la clave (y si la cambiás o
+la perdés, hay que volver a iniciar sesión). Para apuntar a otra instancia, las variables
 `TRACKER_WEB_URL`, `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 siguen teniendo prioridad.
 

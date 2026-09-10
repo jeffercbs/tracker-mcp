@@ -1,7 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
 import { CONFIG_DIR, migrateLegacyConfigDir } from "../config/paths.js"
+import { readSecureFile, writeSecureFile } from "../config/secure-store.js"
 
 export interface StoredSession {
   accessToken: string
@@ -12,6 +13,7 @@ export interface StoredSession {
 }
 
 const SESSION_FILE = join(CONFIG_DIR, "session.json")
+const SESSION_AAD = "tracker-mcp/session"
 
 function parseSession(raw: string): StoredSession | null {
   let value: unknown
@@ -49,26 +51,23 @@ function parseSession(raw: string): StoredSession | null {
 
 export function loadSession(): StoredSession | null {
   migrateLegacyConfigDir()
-  if (!existsSync(SESSION_FILE)) {
-    return null
+
+  const read = readSecureFile(SESSION_FILE, SESSION_AAD)
+  if (!read) return null
+
+  const session = parseSession(read.raw)
+  if (!session) return null
+
+  if (read.legacy) {
+    saveSession(session)
   }
-  try {
-    return parseSession(readFileSync(SESSION_FILE, "utf8"))
-  } catch {
-    return null
-  }
+
+  return session
 }
 
 export function saveSession(session: StoredSession) {
   migrateLegacyConfigDir()
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
-  }
-  writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2), { mode: 0o600 })
-  try {
-    chmodSync(SESSION_FILE, 0o600)
-  } catch {
-  }
+  writeSecureFile(SESSION_FILE, SESSION_AAD, JSON.stringify(session))
 }
 
 export function clearSession() {

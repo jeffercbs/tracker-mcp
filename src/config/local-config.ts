@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { CONFIG_DIR, migrateLegacyConfigDir } from "./paths.js"
+import { readSecureFile, writeSecureFile } from "./secure-store.js"
 
 export interface LocalConfig {
   supabaseUrl: string
@@ -10,6 +10,7 @@ export interface LocalConfig {
 }
 
 const CONFIG_FILE = join(CONFIG_DIR, "config.json")
+const CONFIG_AAD = "tracker-mcp/config"
 
 export const LEGACY_WEB_URL_ENV = "MY_TRACKER_WEB_URL"
 
@@ -21,36 +22,34 @@ export const ENV_KEYS = {
 
 export function loadLocalConfig(): Partial<LocalConfig> {
   migrateLegacyConfigDir()
-  if (!existsSync(CONFIG_FILE)) {
-    return {}
-  }
 
+  const read = readSecureFile(CONFIG_FILE, CONFIG_AAD)
+  if (!read) return {}
+
+  let parsed: Record<string, unknown>
   try {
-    const parsed = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as Record<string, unknown>
-    const pick = (key: string) =>
-      typeof parsed[key] === "string" && parsed[key] ? (parsed[key] as string) : undefined
-
-    return {
-      supabaseUrl: pick("supabaseUrl"),
-      supabaseAnonKey: pick("supabaseAnonKey"),
-      webUrl: pick("webUrl"),
-    }
+    parsed = JSON.parse(read.raw) as Record<string, unknown>
   } catch {
     return {}
   }
+
+  const pick = (key: string) =>
+    typeof parsed[key] === "string" && parsed[key] ? (parsed[key] as string) : undefined
+
+  const config: Partial<LocalConfig> = {
+    supabaseUrl: pick("supabaseUrl"),
+    supabaseAnonKey: pick("supabaseAnonKey"),
+    webUrl: pick("webUrl"),
+  }
+
+  if (read.legacy && config.supabaseUrl && config.supabaseAnonKey && config.webUrl) {
+    saveLocalConfig(config as LocalConfig)
+  }
+
+  return config
 }
 
 export function saveLocalConfig(config: LocalConfig) {
   migrateLegacyConfigDir()
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
-  }
-
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 })
-  try {
-    chmodSync(CONFIG_FILE, 0o600)
-  } catch {
-  }
+  writeSecureFile(CONFIG_FILE, CONFIG_AAD, JSON.stringify(config))
 }
-
-
